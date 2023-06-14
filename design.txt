@@ -1,0 +1,99 @@
+Interface
+    TaskManager
+        Tasks
+        Results
+        Admin
+        (* TaskManager) GO
+            1. read from chan, assign tasks to workers in map
+            2. retry tasks if needed
+            3. push results
+            *. ready! (Admin)
+
+    SessionManager
+        [TBD] Sessions
+        sessionCount
+        (* SessionManager) GO
+            1. monitor sessionCount
+            2. closeConn! (Admin)
+
+    DedicatedWorker
+        workerTask
+        workerAdmin
+        (* DedicatedWorker) GO
+            *. read from chan
+                work (Task)
+                    1. Dial <-- semaphore
+                    2. GET <-- semaphore
+                    3. hand Result back to TaskManager
+                ready (Admin)
+                    1. Ready!
+                close (Admin)
+                    1. manually close Session
+
+
+Struct
+    Task
+    Result
+        Task
+    [TBD] Session
+    Admin
+
+Channel
+    semaphore
+        Dial
+        GET
+    Tasks [] Task
+    Results [] Result
+    [TBD] Sessions [] Session
+    [TBD] Feedback [] Result
+
+
+[TBD] means waiting for suggestions
+
+The top level idea of this program is to scan (send GET requests) as fast as possible.
+The program uses Go routines to handle GET requests.
+The program has two major components: managers and workers, both are interfaces
+There are two managers in total, thus two different interfaces. 
+
+The input of the program are defined by <IP, Domain, Endpoint> Tasks.
+At the beginning of the program, tasks are loaded by a read function
+    and are fed into a tasks channel. 
+Task manager read the tasks channel and assign Tasks to workers. 
+Workers are domain dedicated. there should be a map where keys are domains and values are workers.
+Workers take tasks and the tasks goes to workerTask channel, a small channel
+Workers then read from the small channel and perform a get request.
+A get request is two-staged, with the first stage being TLS connection, 
+and the second stage being sending GET request. 
+
+We donnot want to flood too many traffic, so the level of concurrency needs to be controlled:
+both TLS connection stage and GET stage will need to wait a semaphore with pre setted values.
+Also, the number of sessions needs to be recorded, since the router capacity is limited.
+Upon successful TLS connection establishment, worker should send a message to session manager
+(the other type of manager), and the session manager should keep record of all ongoing sessions.
+If the number of ongoing sessions exceeds a predefined limit, session manager should send
+messages to all workers and tell workers to cut their connections. However, only idle workers,
+those not working for a predefined time, need to cut their connections, those workers need to 
+notify session manager to keep track of the number of ongoing sessions.
+
+After the two-staged task, the result is either success or failure. Workers should send the result
+to task manager. Task manager should be happy about success results and send those directly to
+a result channel. Each task has a predefined max-retry number of retries. Task manager is
+responsible of putting failed tasks back to input task channel depending on if the max number 
+of reties is reached.
+
+If input task channel is empty, task manager should inform all workers as well as the session
+manager to stop their work.
+
+Several channels are required to enable proper communication. 
+Task manager uses a tasks channel for main inputs, a results channel for main outputs,
+Task manager and session manager shares an Admin channel to send admin messages to workers,
+including stop their work (a ready message) and close connection message.
+Workers uses mini workertask channels to handle their input tasks, 
+[there should probably be another channel between workers and task manager for 
+worker result handling]
+[there should also be another channel between workers and session managers for
+the TLS connection status handling]
+
+Task, Result, Session, AdminMsg should all be predefined structs
+As aforementioned, workers should stay in one map, where the keys are [TBD domain or IP]
+and the values are worker interfaces (structs)

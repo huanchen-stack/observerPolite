@@ -1,0 +1,9 @@
+TODO
+1. now only support https not http 
+    see worker.go --> TLS conn
+
+
+
+LOG
+design.txt done Jun 12
+worker.go first draft done Jun 14
