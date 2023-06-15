@@ -2,7 +2,16 @@ package common
 
 import (
 	"net/http"
+	"time"
 )
+
+type Config struct {
+	Timeout            time.Duration
+	MaxRedirects       int
+	RedirectSucceed    bool
+	SessionLimit       int
+	SessionIdleTimeout int
+}
 
 type Task struct {
 	IP       string

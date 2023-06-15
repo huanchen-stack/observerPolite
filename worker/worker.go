@@ -2,12 +2,11 @@ package worker
 
 import (
 	"context"
+	"math/rand"
 	"net"
 	"net/http"
 	cm "observerPolite/common"
-	mn "observerPolite/main"
 	"time"
-	// mgr "observerPolite/manager"
 )
 
 type DedicatedWorker struct {
@@ -42,10 +41,10 @@ func EstablishTLSConnection(task cm.Task) (*http.Client, error) {
 
 	client := &http.Client{
 		Transport: transport,
-		Timeout:   mn.GlobalConfig.Timeout,
+		Timeout:   cm.GlobalConfig.Timeout,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= mn.GlobalConfig.MaxRedirects {
-				if mn.GlobalConfig.RedirectSucceed {
+			if len(via) >= cm.GlobalConfig.MaxRedirects {
+				if cm.GlobalConfig.RedirectSucceed {
 					return nil
 				}
 				return http.ErrUseLastResponse
@@ -66,37 +65,42 @@ func SendGETRequest(client *http.Client, task cm.Task) (*http.Response, error) {
 }
 
 func (dw *DedicatedWorker) HandleTask(task cm.Task) {
+	// Politeness control
+	if time.Since(dw.LastActive) < dw.Politeness {
+		time.Sleep(dw.Politeness - time.Since(dw.LastActive))
+	}
+
 	// TLS handshake
 	// 		Reuse connection whenever it's possible
 	if dw.Connection.Client == nil || !dw.Connection.SessionAlive {
-		mn.SemTLSConn <- struct{}{}
+		cm.SemTLSConn <- struct{}{}
 		client, err := EstablishTLSConnection(task)
-		<-mn.SemTLSConn
+		<-cm.SemTLSConn
 
 		if err != nil {
 			task.Retries--
 			*dw.TaskManagerFeedback <- task
 			return
 		}
-
 		dw.Connection.Client = client
 		dw.Connection.SessionAlive = true
 		*dw.SessionManagerAdmin <- cm.AdminMsg{Msg: dw.Domain, Value: 0}
 	}
 
 	// GET request
-	mn.SemGETReq <- struct{}{}
+	cm.SemGETReq <- struct{}{}
 	resp, err := SendGETRequest(dw.Connection.Client, task)
-	<-mn.SemGETReq
+	<-cm.SemGETReq
 
 	if err != nil {
 		task.Retries--
 		*dw.TaskManagerFeedback <- task
 		return
 	}
-
 	task.Resp = resp
 	*dw.TaskManagerFeedback <- task
+
+	dw.LastActive = time.Now()
 }
 
 func (dw *DedicatedWorker) HandleAdminMsg(msg cm.AdminMsg) bool {
@@ -108,6 +112,7 @@ func (dw *DedicatedWorker) HandleAdminMsg(msg cm.AdminMsg) bool {
 		if time.Since(dw.LastActive) > time.Duration(msg.Value)*time.Second {
 			if dw.Connection.SessionAlive && dw.Connection.Client != nil {
 				dw.Connection.Client.CloseIdleConnections()
+				dw.Connection.Client = nil
 				dw.Connection.SessionAlive = false
 			}
 		}
@@ -117,11 +122,14 @@ func (dw *DedicatedWorker) HandleAdminMsg(msg cm.AdminMsg) bool {
 }
 
 func (dw *DedicatedWorker) Start() {
+	// Non-uniform initialization
+	randSleep := time.Duration(rand.Int63n(int64(dw.Politeness)))
+	time.Sleep(randSleep)
+
 	for {
 		select {
 		case task := <-dw.WorkerTasks:
 			dw.HandleTask(task)
-			dw.LastActive = time.Now()
 		case adminMsg := <-dw.WorkerAdmin:
 			if dw.HandleAdminMsg(adminMsg) {
 				return // Stop the worker!!!

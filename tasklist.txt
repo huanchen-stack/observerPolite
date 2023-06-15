@@ -1,6 +1,14 @@
 TODO
 1. now only support https not http 
     see worker.go --> TLS conn
+2. retries are naive: 
+    if url is malformed, retries makes no sense
+    tosing back and force seems trivial
+3. where to set last active? before handle task or after
+4. close workers if really needed
+5. EstablishTLSConnection error handling
+6. semaphores are global
+7. redirect succeed not implemented (fake a response!)
 
 
 
