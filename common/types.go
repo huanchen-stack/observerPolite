@@ -9,8 +9,10 @@ type Config struct {
 	Timeout            time.Duration
 	MaxRedirects       int
 	RedirectSucceed    bool
+	Retries            int
 	SessionLimit       int
 	SessionIdleTimeout int
+	Politeness         time.Duration
 }
 
 type Task struct {

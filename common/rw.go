@@ -25,6 +25,8 @@ func ReadTasksFromCsv(filename string) ([]Task, error) {
 			IP:       strings.TrimSpace((line[0])),
 			Domain:   strings.TrimSpace((line[1])),
 			Endpoint: strings.TrimSpace(line[2]),
+			Retries:  GlobalConfig.Retries,
+			Resp:     nil,
 		})
 	}
 

@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"net"
 	"net/http"
@@ -16,12 +17,11 @@ type DedicatedWorker struct {
 	WorkerAdmin chan cm.AdminMsg
 
 	TaskManagerFeedback *chan cm.Task
-	TaskManagerAdmin    *chan cm.AdminMsg
 	SessionManagerAdmin *chan cm.AdminMsg
 
-	Connection *cm.Connection
+	Connection cm.Connection
 	LastActive time.Time
-	Politeness time.Duration
+	Politeness time.Duration // MAY CHANGE DYNAMICALLY
 }
 
 type DedicatedWorkerInterface interface {
@@ -65,10 +65,13 @@ func SendGETRequest(client *http.Client, task cm.Task) (*http.Response, error) {
 }
 
 func (dw *DedicatedWorker) HandleTask(task cm.Task) {
+	fmt.Println("work on task: ", task.Domain)
 	// Politeness control
 	if time.Since(dw.LastActive) < dw.Politeness {
 		time.Sleep(dw.Politeness - time.Since(dw.LastActive))
 	}
+	fmt.Println("duration====", time.Since(dw.LastActive))
+	dw.LastActive = time.Now()
 
 	// TLS handshake
 	// 		Reuse connection whenever it's possible
@@ -78,7 +81,6 @@ func (dw *DedicatedWorker) HandleTask(task cm.Task) {
 		<-cm.SemTLSConn
 
 		if err != nil {
-			task.Retries--
 			*dw.TaskManagerFeedback <- task
 			return
 		}
@@ -93,14 +95,11 @@ func (dw *DedicatedWorker) HandleTask(task cm.Task) {
 	<-cm.SemGETReq
 
 	if err != nil {
-		task.Retries--
 		*dw.TaskManagerFeedback <- task
 		return
 	}
 	task.Resp = resp
 	*dw.TaskManagerFeedback <- task
-
-	dw.LastActive = time.Now()
 }
 
 func (dw *DedicatedWorker) HandleAdminMsg(msg cm.AdminMsg) bool {
@@ -124,6 +123,7 @@ func (dw *DedicatedWorker) HandleAdminMsg(msg cm.AdminMsg) bool {
 func (dw *DedicatedWorker) Start() {
 	// Non-uniform initialization
 	randSleep := time.Duration(rand.Int63n(int64(dw.Politeness)))
+	dw.LastActive = time.Now()
 	time.Sleep(randSleep)
 
 	for {

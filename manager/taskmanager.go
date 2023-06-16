@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"fmt"
 	cm "observerPolite/common"
 	wk "observerPolite/worker"
 )
@@ -10,15 +11,18 @@ type TaskManagerInterface interface {
 }
 
 type TaskManager struct {
-	AllTasks            chan cm.Task
-	Feedback            chan cm.Task
-	AllResults          chan cm.Task
-	DedicatedMap        *map[string]*wk.DedicatedWorker
+	AllTasks chan cm.Task
+	Feedback chan cm.Task
+
+	AllResults          *chan cm.Task
 	SessionManagerAdmin *chan cm.AdminMsg
-	Counter             int
+
+	DedicatedMap *map[string]*wk.DedicatedWorker
+	Counter      int
 }
 
 func (tm *TaskManager) Start() {
+	fmt.Println("taskmanager started")
 	for {
 		select {
 		case task := <-tm.AllTasks:
@@ -35,11 +39,11 @@ func (tm *TaskManager) Start() {
 					tm.AllTasks <- feedback
 				} else {
 					tm.Counter--
-					tm.AllResults <- feedback
+					*tm.AllResults <- feedback
 				}
 			} else {
 				tm.Counter--
-				tm.AllResults <- feedback
+				*tm.AllResults <- feedback
 			}
 		}
 

@@ -6,7 +6,7 @@ import (
 )
 
 type SessionManager struct {
-	AdminChannel chan cm.AdminMsg
+	AdminChan    chan cm.AdminMsg
 	DedicatedMap *map[string]*wk.DedicatedWorker
 	Counter      int
 }
@@ -18,7 +18,7 @@ type SessionManagerInterface interface {
 func (sm *SessionManager) Start() {
 	for {
 		select {
-		case adminMsg := <-sm.AdminChannel:
+		case adminMsg := <-sm.AdminChan:
 			switch adminMsg.Msg {
 			case "Ready":
 				// If "Ready" message is received, signal to stop the manager!!!

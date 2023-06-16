@@ -10,6 +10,8 @@ TODO
 6. semaphores are global
 7. redirect succeed not implemented (fake a response!)
 
+*. POLITENESS MAY CHANGE DYNAMICALLY
+
 
 
 LOG
