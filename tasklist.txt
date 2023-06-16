@@ -17,3 +17,5 @@ TODO
 LOG
 design.txt done Jun 12
 worker.go first draft done Jun 14
+all coding first draft done Jun 15
+naive tests on tasks done June 15 (concurrency limit not tested at all)
