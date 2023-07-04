@@ -1,23 +1,23 @@
 [
     {
-        "Domain": "example.com",
-        "URL": "https://example.com/example",
-        "IP": "93.184.216.34",
-        "AutoRetryHTTPS": true,
-        "StatusCode": 404,
-        "RedirectChain": null,
-        "Err": ""
-    },
-    {
         "Domain": "www.microsoft.com",
         "URL": "http://www.microsoft.com/",
-        "IP": "23.216.81.152",
+        "IP": "104.73.1.162",
         "AutoRetryHTTPS": false,
         "StatusCode": 200,
         "RedirectChain": [
             "302 https://www.microsoft.com/en-us/"
         ],
         "Err": ""
+    },
+    {
+        "Domain": "www.google.com",
+        "URL": "https://www.google.com/maps/",
+        "IP": "",
+        "AutoRetryHTTPS": false,
+        "StatusCode": 0,
+        "RedirectChain": null,
+        "Err": "path /maps/ not allowd for https"
     },
     {
         "Domain": "www.example.com",
@@ -29,23 +29,30 @@
         "Err": ""
     },
     {
-        "Domain": "www.google.com",
-        "URL": "http://www.google.com/maps/",
-        "IP": "142.250.217.68",
-        "AutoRetryHTTPS": false,
-        "StatusCode": 200,
-        "RedirectChain": [
-            "302 https://www.google.com:443/maps/"
-        ],
+        "Domain": "example.com",
+        "URL": "https://example.com/example",
+        "IP": "93.184.216.34",
+        "AutoRetryHTTPS": true,
+        "StatusCode": 404,
+        "RedirectChain": null,
         "Err": ""
     },
     {
         "Domain": "www.microsoft.com",
         "URL": "https://www.microsoft.com/en-us",
-        "IP": "23.216.81.152",
+        "IP": "104.73.1.162",
         "AutoRetryHTTPS": false,
         "StatusCode": 200,
         "RedirectChain": null,
         "Err": ""
+    },
+    {
+        "Domain": "www.microsoft.com",
+        "URL": "https://www.microsoft.com/en-us/windows/si/matrix.html",
+        "IP": "104.73.1.162",
+        "AutoRetryHTTPS": true,
+        "StatusCode": 404,
+        "RedirectChain": null,
+        "Err": "path /en-us/windows/si/matrix.html not allowd for https"
     },
 ]

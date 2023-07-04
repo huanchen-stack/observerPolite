@@ -1,37 +1,69 @@
 ## wikiPolite: A Simple Web Scanner
 
-wikiPolite is a web scanner that issues HTTP GET requests to a list of URLs. The scanner utilizes Go routines to perform concurrent scans and is designed to be efficient and polite, adhering to rules set in `robots.txt` files and maintaining a domain-specific rate limit. 
+wikiPolite is a robust web scanner written in Go that sends HTTP GET requests to a list of URLs concurrently. The scanner abides by the rules outlined in each site's `robots.txt` file and upholds domain-specific rate limits to ensure polite and efficient scanning.
 
-The scanner consists of a main Task Manager and domain-dedicated Workers, with each category having different responsibilities.
+The architecture of the scanner comprises a primary control ('Main') and a series of domain-dedicated 'Workers'
 
-### Task Manager
+### Main
 
-The Task Manager reads tasks from an input file, fetches and evaluates `robots.txt` for each domain. URLs disallowed by `robots.txt` are removed from the task list, while the rest are passed to appropriate Workers. The Task Manager keeps track of an expected runtime for the entire scan and starts all workers. It listens to a result channel, writes results to an output file, and ensures all tasks are processed before termination.
+Main is responsible for reading the tasks from an input file and assigning them to appropriate Workers. Main keeps track of the expected runtime for the entire scan, initiates all workers, and listens to a result channel. It ensures all tasks have been processed before it writes the results to an output file and terminates the program.
 
 ### Workers
 
-Each Worker is dedicated to a specific domain and listens to a task input channel. The Worker wakes up periodically, completing its assigned tasks within the expected runtime. The scan involves DNS resolution, establishing a TLS connection (for HTTPS), and sending a GET request. Any failures and redirects during the process are recorded. Upon completing a task, the Worker writes results, including error messages, redirect chain and time of scan, to the result channel in the Task Manager.
+Each Worker is dedicated to a specific domain and listens to a task input channel. When a Worker is created, it calculates an appropriate crawl delay by dividing the expected runtime by the number of tasks it has to handle. It then sleeps for a random duration, between 0 and the calculated crawl delay, introducing some ***randomness*** to the scanning process. 
+
+Each Worker fetches the `robots.txt` files for both HTTP and HTTPS, and subsequently handles the tasks. A task involves:
+
+* Check if the path is scannable given the scheme, and capture any errors
+* Perform a DNS lookup, and capture any errors
+* Establish a TCP connection, and capture any errors
+* Perform a TLS handshake (for HTTPS), and capture any errors
+* Issue request with a formulated user-agent, and capture any errors
+* Set up redirect chain logging
+* Send the request, and capture any errors
+* If the current scheme is HTTP and the response status code isn't `200 OK`, the Worker ***retries*** with HTTPS and makes a note.
+* Upon task completion, the Worker sends the results back to Main.
 
 ### Program Flow
 
-1. Initialization: The Task Manager loads tasks from an input file and evaluates `robots.txt` for each domain, discarding disallowed URLs.
+Initialization: Main loads tasks from an input file and assigns tasks to Workers based on the domain.
 
-2. Task Assignment: The Task Manager assigns tasks to Workers based on domain.
+Task Execution: The Workers complete their tasks within the expected runtime, and send results back to Main.
 
-3. Task Execution: The Workers complete their tasks within the expected runtime, sending results back to the Task Manager.
+Result Handling: Main writes results from the result channel to an output `.txt` file.  ***Next Step: Log Results to a Database***
 
-4. Result Handling: The Task Manager writes results from the result channel to an output file.
+### Output Example
 
-5. Program Termination: When all tasks have been processed, the Task Manager stops all Workers.
-
-### Data Structures
-
-The program mainly uses two data structures: one for input tasks and one for task results. 
-
-Tasks: Tasks are loaded from the input file at the start of the program. 
-
-Results: The results of tasks, which include the URL, status code, any redirects, and time of scan, are returned from the Workers to the Task Manager.
-
-### Session Manager
-
-An optional Session Manager can be included, monitoring the count of ongoing sessions. When the session count exceeds a predefined limit, it can instruct idle Workers to close their sessions.
+```
+[
+    {
+        "Domain": "www.microsoft.com",
+        "URL": "http://www.microsoft.com/",
+        "IP": "104.73.1.162",
+        "AutoRetryHTTPS": false,
+        "StatusCode": 200,
+        "RedirectChain": [
+            "302 https://www.microsoft.com/en-us/"
+        ],
+        "Err": ""
+    },
+    {
+        "Domain": "example.com",
+        "URL": "https://example.com/example",
+        "IP": "93.184.216.34",
+        "AutoRetryHTTPS": true,
+        "StatusCode": 404,
+        "RedirectChain": null,
+        "Err": ""
+    },
+    {
+        "Domain": "www.microsoft.com",
+        "URL": "https://www.microsoft.com/en-us/windows/si/matrix.html",
+        "IP": "104.73.1.162",
+        "AutoRetryHTTPS": true,
+        "StatusCode": 404,
+        "RedirectChain": null,
+        "Err": "path /en-us/windows/si/matrix.html not allowd for https"
+    }
+]
+```
