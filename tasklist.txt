@@ -1,3 +1,7 @@
-http --> https auto retry
+
+to be determined:
+    dns look up per thread?
 
 (optional) retries
+
+url  html#jdsfaoiefs stop at #!!!

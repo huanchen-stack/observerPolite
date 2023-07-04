@@ -11,12 +11,16 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/temoto/robotstxt"
 )
 
 type DedicatedWorker struct {
 	Domain        string
 	WorkerTasks   chan cm.Task
 	AllResultsRef *chan cm.Task
+	robotHTTP     *robotstxt.Group
+	robotHTTPS    *robotstxt.Group
 }
 
 type DedicatedWorkerInterface interface {
@@ -27,6 +31,8 @@ type DedicatedWorkerInterface interface {
 func (dw *DedicatedWorker) HandleTask(task cm.Task) {
 	// fmt.Println("work on task: ", task.Domain)
 
+	// Add results to chan: TODO: add to DB instead
+	// Auto HTTPS retry
 	defer func() {
 		if (task.Resp == nil || task.Resp.StatusCode != 200) && strings.HasPrefix(task.URL, "http://") {
 			task.URL = strings.Replace(task.URL, "http://", "https://", 1)
@@ -38,6 +44,22 @@ func (dw *DedicatedWorker) HandleTask(task cm.Task) {
 	}()
 
 	parsedURL, _ := url.Parse(task.URL)
+
+	// Robot Check (only if robot.txt is found)
+	if parsedURL.Scheme == "http" {
+		if dw.robotHTTP != nil && !dw.robotHTTP.Test(parsedURL.Path) {
+			task.Err = fmt.Errorf("path %s not allowd for http", parsedURL.Path)
+			return
+		}
+	} else if parsedURL.Scheme == "https" {
+		if dw.robotHTTPS != nil && !dw.robotHTTPS.Test(parsedURL.Path) {
+			task.Err = fmt.Errorf("path %s not allowd for https", parsedURL.Path)
+			return
+		}
+	} else {
+		task.Err = fmt.Errorf("WRONG Scheme! (not http or https)")
+		return
+	}
 
 	// DNS Lookup
 	ips, err := net.LookupIP(parsedURL.Hostname())
@@ -71,7 +93,6 @@ func (dw *DedicatedWorker) HandleTask(task cm.Task) {
 
 	// TLS Handshake
 	if parsedURL.Scheme == "https" {
-		// TLS handshake
 		tlsConn := tls.Client(conn, &tls.Config{ServerName: parsedURL.Hostname()})
 		err := tlsConn.Handshake()
 		if err != nil {
@@ -80,14 +101,15 @@ func (dw *DedicatedWorker) HandleTask(task cm.Task) {
 		}
 	}
 
+	// Issue a request
 	req, err := http.NewRequest("GET", task.URL, nil)
 	if err != nil {
-		task.Err = fmt.Errorf("Request creation error: %w", err)
+		task.Err = fmt.Errorf("request creation error: %w", err)
 		return
 	}
-
 	req.Header.Set("User-Agent", "Web Measure/1.0 (https://webresearch.eecs.umich.edu/overview-of-web-measurements/) Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.130 Safari/537.36")
 
+	// Redirect Chain
 	client := http.Client{
 		Timeout: time.Second * 30,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -98,6 +120,8 @@ func (dw *DedicatedWorker) HandleTask(task cm.Task) {
 			return nil
 		},
 	}
+
+	// Send Request
 	resp, err = client.Do(req)
 	if err != nil {
 		task.Err = fmt.Errorf("HTTPS request error: %w", err)
@@ -109,11 +133,49 @@ func (dw *DedicatedWorker) HandleTask(task cm.Task) {
 	task.Err = err
 }
 
+func (dw *DedicatedWorker) FetchRobot(scheme string) error {
+	robotsURL := url.URL{
+		Scheme: scheme,
+		Host:   dw.Domain,
+		Path:   "/robots.txt",
+	}
+
+	resp, err := http.Get(robotsURL.String())
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	robots, err := robotstxt.FromResponse(resp)
+	if err != nil {
+		return err
+	}
+
+	if scheme == "http" {
+		dw.robotHTTP = robots.FindGroup("*")
+	} else {
+		dw.robotHTTPS = robots.FindGroup("*")
+	}
+
+	return nil
+}
+
 func (dw *DedicatedWorker) Start() {
 	crawlDelay := cm.GlobalConfig.ExpectedRuntime / time.Duration(len(dw.WorkerTasks))
 
+	// Bring in some Randomness
 	randSleep := time.Duration(rand.Int63n(int64(crawlDelay)))
 	time.Sleep(randSleep)
+
+	// Fetch robot.txt
+	err := dw.FetchRobot("http")
+	if err != nil {
+		fmt.Println("robots.txt for %w (http) is not found", dw.Domain)
+	}
+	err = dw.FetchRobot("https")
+	if err != nil {
+		fmt.Println("robots.txt for %w (https) is not found", dw.Domain)
+	}
 
 	for task := range dw.WorkerTasks {
 		dw.HandleTask(task)
