@@ -179,6 +179,6 @@ func (dw *DedicatedWorker) Start() {
 
 	for task := range dw.WorkerTasks {
 		dw.HandleTask(task)
-		time.Sleep(crawlDelay)
+		time.Sleep(crawlDelay) // sleep periodially
 	}
 }
