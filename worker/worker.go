@@ -170,10 +170,12 @@ func (dw *DedicatedWorker) Start() {
 	// Fetch robot.txt
 	err := dw.FetchRobot("http")
 	if err != nil {
+		// TODO: do something
 		fmt.Println("robots.txt for %w (http) is not found", dw.Domain)
 	}
 	err = dw.FetchRobot("https")
 	if err != nil {
+		// TODO: do something
 		fmt.Println("robots.txt for %w (https) is not found", dw.Domain)
 	}
 
