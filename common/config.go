@@ -5,14 +5,6 @@ import (
 )
 
 var GlobalConfig = Config{
-	Timeout:            15 * time.Second, // TLS establishment timeout
-	MaxRedirects:       10,               // Maximum number of redirects
-	RedirectSucceed:    false,            // Mark all redirects as success (not implemented)
-	Retries:            3,                // Maximum number of retries for each task
-	SessionLimit:       10000,            // Maximum number of concurrent sessions (Router Limit)
-	SessionIdleTimeout: 120,              // Threshold for killing idle sessions (Router Cleanup)
-	Politeness:         3 * time.Second,  // Duration between scans of the same Domain
+	ExpectedRuntime: 10 * time.Second,
+	Retries:         3,
 }
-
-var SemTLSConn = make(chan struct{}, 3000) // Concurrency limit on TLS establisthments
-var SemGETReq = make(chan struct{}, 10000) // Concurrency limit on GET requests

@@ -1,34 +1,61 @@
 package common
 
 import (
-	"encoding/csv"
+	"bufio"
+	"fmt"
+	"net/url"
 	"os"
 	"strings"
 )
 
-func ReadTasksFromCsv(filename string) ([]Task, error) {
+func ReadTasksFromInput(filename string) ([]Task, error) {
 	file, err := os.Open(filename)
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
 
-	reader := csv.NewReader(file)
-	lines, err := reader.ReadAll()
-	if err != nil {
-		return nil, err
-	}
+	scanner := bufio.NewScanner(file)
 
 	var tasks []Task
-	for _, line := range lines {
+	for scanner.Scan() {
+		URL := strings.TrimSpace(scanner.Text())
+
+		parsedURL, err := url.Parse(URL)
+		if err != nil {
+			fmt.Println("Error extracting domain from URL", err)
+		}
+
 		tasks = append(tasks, Task{
-			IP:       strings.TrimSpace((line[0])),
-			Domain:   strings.TrimSpace((line[1])),
-			Endpoint: strings.TrimSpace(line[2]),
-			Retries:  GlobalConfig.Retries,
-			Resp:     nil,
+			Domain:         parsedURL.Hostname(),
+			URL:            URL,
+			AutoRetryHTTPS: false,
 		})
 	}
 
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
 	return tasks, nil
+}
+
+func ResultPrint(task Task) TaskPrint {
+
+	taskPrint := TaskPrint{
+		Domain: task.Domain,
+		URL:    task.URL,
+		IP:     task.IP,
+	}
+
+	if task.Err != nil {
+		taskPrint.Err = task.Err.Error()
+	}
+	if task.Resp != nil {
+		taskPrint.AutoRetryHTTPS = task.AutoRetryHTTPS
+		taskPrint.StatusCode = task.Resp.StatusCode
+		taskPrint.RedirectChain = task.RedirectChain
+	}
+
+	return taskPrint
 }

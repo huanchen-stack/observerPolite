@@ -1,139 +1,120 @@
 package worker
 
 import (
-	"context"
+	"crypto/tls"
 	"fmt"
 	"math/rand"
 	"net"
 	"net/http"
+	"net/url"
 	cm "observerPolite/common"
+	"strconv"
+	"strings"
 	"time"
 )
 
 type DedicatedWorker struct {
-	Domain string
-
-	WorkerTasks chan cm.Task
-	WorkerAdmin chan cm.AdminMsg
-
-	TaskManagerFeedback *chan cm.Task
-	SessionManagerAdmin *chan cm.AdminMsg
-
-	Connection cm.Connection
-	LastActive time.Time
-	Politeness time.Duration // MAY CHANGE DYNAMICALLY
+	Domain        string
+	WorkerTasks   chan cm.Task
+	AllResultsRef *chan cm.Task
 }
 
 type DedicatedWorkerInterface interface {
 	Start()
 	HandleTask(task cm.Task)
-	HandleAdminMsg(msg cm.AdminMsg)
-}
-
-func EstablishTLSConnection(task cm.Task) (*http.Client, error) {
-	dailer := &net.Dialer{}
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
-		return dailer.DialContext(ctx, network, task.IP+":443")
-	}
-	transport.MaxIdleConns = 0
-	transport.IdleConnTimeout = 60 * time.Second
-
-	client := &http.Client{
-		Transport: transport,
-		Timeout:   cm.GlobalConfig.Timeout,
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= cm.GlobalConfig.MaxRedirects {
-				if cm.GlobalConfig.RedirectSucceed {
-					return nil
-				}
-				return http.ErrUseLastResponse
-			}
-			return nil
-		},
-	}
-	return client, nil
-}
-
-func SendGETRequest(client *http.Client, task cm.Task) (*http.Response, error) {
-	req, err := http.NewRequest("GET", "https://"+task.Domain+task.Endpoint, nil)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := client.Do(req)
-	return resp, err
 }
 
 func (dw *DedicatedWorker) HandleTask(task cm.Task) {
-	fmt.Println("work on task: ", task.Domain)
-	// Politeness control
-	if time.Since(dw.LastActive) < dw.Politeness {
-		time.Sleep(dw.Politeness - time.Since(dw.LastActive))
-	}
-	fmt.Println("duration====", time.Since(dw.LastActive))
-	dw.LastActive = time.Now()
+	// fmt.Println("work on task: ", task.Domain)
 
-	// TLS handshake
-	// 		Reuse connection whenever it's possible
-	if dw.Connection.Client == nil || !dw.Connection.SessionAlive {
-		cm.SemTLSConn <- struct{}{}
-		client, err := EstablishTLSConnection(task)
-		<-cm.SemTLSConn
-
-		if err != nil {
-			*dw.TaskManagerFeedback <- task
-			return
+	defer func() {
+		if (task.Resp == nil || task.Resp.StatusCode != 200) && strings.HasPrefix(task.URL, "http://") {
+			task.URL = strings.Replace(task.URL, "http://", "https://", 1)
+			task.AutoRetryHTTPS = true
+			dw.HandleTask(task)
+		} else {
+			*dw.AllResultsRef <- task
 		}
-		dw.Connection.Client = client
-		dw.Connection.SessionAlive = true
-		*dw.SessionManagerAdmin <- cm.AdminMsg{Msg: dw.Domain, Value: 0}
-	}
+	}()
 
-	// GET request
-	cm.SemGETReq <- struct{}{}
-	resp, err := SendGETRequest(dw.Connection.Client, task)
-	<-cm.SemGETReq
+	parsedURL, _ := url.Parse(task.URL)
 
+	// DNS Lookup
+	ips, err := net.LookupIP(parsedURL.Hostname())
 	if err != nil {
-		*dw.TaskManagerFeedback <- task
+		task.Err = fmt.Errorf("DNS error: %w", err)
 		return
 	}
-	task.Resp = resp
-	*dw.TaskManagerFeedback <- task
-}
-
-func (dw *DedicatedWorker) HandleAdminMsg(msg cm.AdminMsg) bool {
-	switch msg.Msg {
-	case "Ready":
-		// If "Ready" message is received, return true to signal to stop the worker!!!
-		return true
-	case "Clear":
-		if time.Since(dw.LastActive) > time.Duration(msg.Value)*time.Second {
-			if dw.Connection.SessionAlive && dw.Connection.Client != nil {
-				dw.Connection.Client.CloseIdleConnections()
-				dw.Connection.Client = nil
-				dw.Connection.SessionAlive = false
-			}
+	for _, ip := range ips {
+		if ipv4 := ip.To4(); ipv4 != nil {
+			task.IP = ipv4.String()
+			break
 		}
 	}
-	// If message was not "Ready", return false to keep the worker running
-	return false
+
+	// TCP Connection
+	port := parsedURL.Port()
+	if port == "" {
+		if parsedURL.Scheme == "https" {
+			port = "443"
+		} else if parsedURL.Scheme == "http" {
+			port = "80"
+		}
+	}
+	conn, err := net.Dial("tcp", net.JoinHostPort(task.IP, port))
+	if err != nil {
+		task.Err = fmt.Errorf("TCP error: %w", err)
+		return
+	}
+
+	var resp *http.Response
+
+	// TLS Handshake
+	if parsedURL.Scheme == "https" {
+		// TLS handshake
+		tlsConn := tls.Client(conn, &tls.Config{ServerName: parsedURL.Hostname()})
+		err := tlsConn.Handshake()
+		if err != nil {
+			task.Err = fmt.Errorf("TLS handshake error: %w", err)
+			return
+		}
+	}
+
+	req, err := http.NewRequest("GET", task.URL, nil)
+	if err != nil {
+		task.Err = fmt.Errorf("Request creation error: %w", err)
+		return
+	}
+
+	client := http.Client{
+		Timeout: time.Second * 30,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return http.ErrUseLastResponse
+			}
+			task.RedirectChain = append(task.RedirectChain, strconv.Itoa(req.Response.StatusCode)+" "+req.URL.String())
+			return nil
+		},
+	}
+	resp, err = client.Do(req)
+	if err != nil {
+		task.Err = fmt.Errorf("HTTPS request error: %w", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	task.Resp = resp
+	task.Err = err
 }
 
 func (dw *DedicatedWorker) Start() {
-	// Non-uniform initialization
-	randSleep := time.Duration(rand.Int63n(int64(dw.Politeness)))
-	dw.LastActive = time.Now()
+	crawlDelay := cm.GlobalConfig.ExpectedRuntime / time.Duration(len(dw.WorkerTasks))
+
+	randSleep := time.Duration(rand.Int63n(int64(crawlDelay)))
 	time.Sleep(randSleep)
 
-	for {
-		select {
-		case task := <-dw.WorkerTasks:
-			dw.HandleTask(task)
-		case adminMsg := <-dw.WorkerAdmin:
-			if dw.HandleAdminMsg(adminMsg) {
-				return // Stop the worker!!!
-			}
-		}
+	for task := range dw.WorkerTasks {
+		dw.HandleTask(task)
+		time.Sleep(crawlDelay)
 	}
 }
