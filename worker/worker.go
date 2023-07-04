@@ -86,6 +86,8 @@ func (dw *DedicatedWorker) HandleTask(task cm.Task) {
 		return
 	}
 
+	req.Header.Set("User-Agent", "Web Measure/1.0 (https://webresearch.eecs.umich.edu/overview-of-web-measurements/) Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.130 Safari/537.36")
+
 	client := http.Client{
 		Timeout: time.Second * 30,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
