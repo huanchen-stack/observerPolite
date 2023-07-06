@@ -6,7 +6,7 @@ The architecture of the scanner comprises a primary control ('Main') and a serie
 
 ### Main
 
-Main is responsible for reading the tasks from an input file and assigning them to appropriate Workers. Main keeps track of the expected runtime for the entire scan, initiates all workers, and listens to a result channel. It ensures all tasks have been processed before it writes the results to an output file and terminates the program.
+Main is responsible for reading the tasks from an input file, handle connection to database, and assigning them to appropriate Workers. Main keeps track of the expected runtime for the entire scan, initiates all workers, and listens to a result channel. Upon receiving results from the result channel, Main ***keeps logging*** to database in a program-dedicated collection.
 
 ### Workers
 
@@ -26,11 +26,11 @@ Each Worker fetches the `robots.txt` files for both HTTP and HTTPS, and subseque
 
 ### Program Flow
 
-Initialization: Main loads tasks from an input file and assigns tasks to Workers based on the domain.
+Initialization: Main loads tasks from an input file, prepare database for output, and assigns tasks to Workers based on the domain.
 
 Task Execution: The Workers complete their tasks within the expected runtime, and send results back to Main.
 
-Result Handling: Main writes results from the result channel to an output `.txt` file.  ***Next Step: Log Results to a Database***
+Result Handling: Main writes results from the result channel ***MongoDB***
 
 ### Output Example
 
