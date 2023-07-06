@@ -19,13 +19,3 @@ type Task struct {
 	Resp           *http.Response
 	Err            error
 }
-
-type TaskPrint struct {
-	Domain         string
-	URL            string
-	IP             string
-	AutoRetryHTTPS bool
-	StatusCode     int
-	RedirectChain  []string
-	Err            string
-}

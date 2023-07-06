@@ -39,23 +39,3 @@ func ReadTasksFromInput(filename string) ([]Task, error) {
 
 	return tasks, nil
 }
-
-func ResultPrint(task Task) TaskPrint {
-
-	taskPrint := TaskPrint{
-		Domain: task.Domain,
-		URL:    task.URL,
-		IP:     task.IP,
-	}
-
-	if task.Err != nil {
-		taskPrint.Err = task.Err.Error()
-	}
-	if task.Resp != nil {
-		taskPrint.AutoRetryHTTPS = task.AutoRetryHTTPS
-		taskPrint.StatusCode = task.Resp.StatusCode
-		taskPrint.RedirectChain = task.RedirectChain
-	}
-
-	return taskPrint
-}

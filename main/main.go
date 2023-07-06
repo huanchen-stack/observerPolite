@@ -1,13 +1,16 @@
 package main
 
 import (
-	"encoding/json"
-	"fmt"
+	"context"
 	cm "observerPolite/common"
+	db "observerPolite/mongodb"
 	wk "observerPolite/worker"
 )
 
 func main() {
+
+	dbConn := db.DBConn{context.Background(), nil, nil, nil}
+	dbConn.Connect()
 
 	tasks, err := cm.ReadTasksFromInput("input.txt")
 	if err != nil {
@@ -33,22 +36,20 @@ func main() {
 		workerMap[task.Domain].WorkerTasks <- task
 	}
 
-	for _, wk := range workerMap {
-		go wk.Start()
+	for _, wkr := range workerMap {
+		go wkr.Start()
 	}
 
-	fmt.Printf("[") // for formatting
 	var counter = 0
 	for result := range allResults {
 		counter += 1
 
-		jsonOut, _ := json.Marshal(cm.ResultPrint(result))
-		fmt.Println(string(jsonOut))
-		fmt.Printf(",") // for formatting
+		dbConn.Insert(result)
 
 		if counter == len(tasks) {
 			break
 		}
 	}
-	fmt.Println("]") // for formatting
+
+	dbConn.Disconnect()
 }
