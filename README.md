@@ -36,34 +36,38 @@ Result Handling: Main writes results from the result channel ***MongoDB***
 
 ```
 [
-    {
-        "Domain": "www.microsoft.com",
-        "URL": "http://www.microsoft.com/",
-        "IP": "104.73.1.162",
-        "AutoRetryHTTPS": false,
-        "StatusCode": 200,
-        "RedirectChain": [
-            "302 https://www.microsoft.com/en-us/"
-        ],
-        "Err": ""
-    },
-    {
-        "Domain": "example.com",
-        "URL": "https://example.com/example",
-        "IP": "93.184.216.34",
-        "AutoRetryHTTPS": true,
-        "StatusCode": 404,
-        "RedirectChain": null,
-        "Err": ""
-    },
-    {
-        "Domain": "www.microsoft.com",
-        "URL": "https://www.microsoft.com/en-us/windows/si/matrix.html",
-        "IP": "104.73.1.162",
-        "AutoRetryHTTPS": true,
-        "StatusCode": 404,
-        "RedirectChain": null,
-        "Err": "path /en-us/windows/si/matrix.html not allowd for https"
-    }
+  {
+    _id: ObjectId("64a75ca83194a40fedbfd33b"),
+    domain: 'news.cincinnati.com',
+    url: 'http://news.cincinnati.com/article/20120521/SPT01/305210101/Exclusive-Crosstown-Shootout-set-U-S-Bank-Arena?odyssey=mod%7cmostview',
+    ip: '159.54.247.168',
+    autoretryhttps: false,
+    statuscode: 200,
+    redirectchain: [
+      '301 http://www.cincinnati.com',
+      '301 https://www.cincinnati.com/'
+    ],
+    err: ''
+  },
+  {
+    _id: ObjectId("64a75ca83194a40fedbfd33c"),
+    domain: 'docs.lib.noaa.gov',
+    url: 'https://docs.lib.noaa.gov/rescue/mwr/054/mwr-054-07-0312.pdf',
+    ip: '',
+    autoretryhttps: false,
+    statuscode: 0,
+    redirectchain: null,
+    err: 'DNS error: lookup docs.lib.noaa.gov: no such host'
+  },
+  {
+    _id: ObjectId("64a75ca83194a40fedbfd33d"),
+    domain: 'www.saraparetsky.com',
+    url: 'http://www.saraparetsky.com',
+    ip: '141.193.213.10',
+    autoretryhttps: false,
+    statuscode: 200,
+    redirectchain: [ '301 https://www.saraparetsky.com/' ],
+    err: ''
+  }
 ]
 ```
