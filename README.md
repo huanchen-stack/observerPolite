@@ -14,7 +14,7 @@ Each Worker is dedicated to a specific domain and listens to a task input channe
 
 Each Worker fetches the `robots.txt` files for both HTTP and HTTPS, and subsequently handles the tasks. A task involves:
 
-* Check if the path is scannable given the scheme, and capture any errors
+* Check if the path is scan-able given the scheme, and capture any errors
 * Perform a DNS lookup, and capture any errors
 * Establish a TCP connection, and capture any errors
 * Perform a TLS handshake (for HTTPS), and capture any errors
@@ -36,38 +36,44 @@ Result Handling: Main writes results from the result channel ***MongoDB***
 
 ```
 [
-  {
-    _id: ObjectId("64a75ca83194a40fedbfd33b"),
-    domain: 'news.cincinnati.com',
-    url: 'http://news.cincinnati.com/article/20120521/SPT01/305210101/Exclusive-Crosstown-Shootout-set-U-S-Bank-Arena?odyssey=mod%7cmostview',
-    ip: '159.54.247.168',
-    autoretryhttps: false,
-    statuscode: 200,
-    redirectchain: [
-      '301 http://www.cincinnati.com',
-      '301 https://www.cincinnati.com/'
-    ],
-    err: ''
-  },
-  {
-    _id: ObjectId("64a75ca83194a40fedbfd33c"),
-    domain: 'docs.lib.noaa.gov',
-    url: 'https://docs.lib.noaa.gov/rescue/mwr/054/mwr-054-07-0312.pdf',
-    ip: '',
-    autoretryhttps: false,
-    statuscode: 0,
-    redirectchain: null,
-    err: 'DNS error: lookup docs.lib.noaa.gov: no such host'
-  },
-  {
-    _id: ObjectId("64a75ca83194a40fedbfd33d"),
-    domain: 'www.saraparetsky.com',
-    url: 'http://www.saraparetsky.com',
-    ip: '141.193.213.10',
-    autoretryhttps: false,
-    statuscode: 200,
-    redirectchain: [ '301 https://www.saraparetsky.com/' ],
-    err: ''
-  }
+    {
+        _id: ObjectId("64b071b5c01626119eca27ea"),
+        domain: 'www.google.com',
+        url: 'http://www.google.com/maps/',
+        ip: '',
+        statuscode: 0,
+        redirectchain: null,
+        err: 'path /maps/ not allowd for http',
+        retried: true,
+        retriedstatuscode: 0,
+        retriedredirectchain: null,
+        retriederr: 'path /maps/ not allowd for https'
+    },
+    {
+        _id: ObjectId("64b071b6c01626119eca27ec"),
+        domain: 'www.microsoft.com',
+        url: 'http://www.microsoft.com/',
+        ip: '23.216.81.152',
+        statuscode: 200,
+        redirectchain: [ '302 https://www.microsoft.com/en-us/' ],
+        err: '',
+        retried: false,
+        retriedstatuscode: 0,
+        retriedredirectchain: null,
+        retriederr: ''
+    },
+    {
+        _id: ObjectId("64b071bec01626119eca27ef"),
+        domain: 'www.microsoft.com',
+        url: 'http://www.microsoft.com/en-us/windows/si/matrix.html',
+        ip: '23.216.81.152',
+        statuscode: 404,
+        redirectchain: [],
+        err: '',
+        retried: true,
+        retriedstatuscode: 0,
+        retriedredirectchain: null,
+        retriederr: 'path /en-us/windows/si/matrix.html not allowd for https'
+    }
 ]
 ```

@@ -25,6 +25,10 @@ type DBConnInterface interface {
 }
 
 func (db *DBConn) Connect() {
+	// DISABLE DB FOR DEBUG MODE
+	if !cm.GlobalConfig.DBlogging {
+		return
+	}
 	// Use the SetServerAPIOptions() method to set the Stable API version to 1
 	serverAPI := options.ServerAPI(options.ServerAPIVersion1)
 	opts := options.Client().ApplyURI("mongodb+srv://admin:admin@observerdb.borsr21.mongodb.net/?retryWrites=true&w=majority").SetServerAPIOptions(serverAPI)
@@ -47,22 +51,25 @@ func (db *DBConn) Connect() {
 	//TODO: ALWAYS MAKE NEW COLLECTIONS
 	currentTime := time.Now()
 	timeString := currentTime.Format("01022006")
-	err = database.CreateCollection(db.Ctx, "MiniScan"+timeString)
+	err = database.CreateCollection(db.Ctx, cm.GlobalConfig.DBCollection+timeString)
 	if err != nil {
 		log.Fatal(err)
 	}
-	collection := database.Collection("MiniScan" + timeString)
+	collection := database.Collection(cm.GlobalConfig.DBCollection + timeString)
 	db.Collection = collection
 }
 
 type DBDocFmt struct {
-	Domain         string
-	URL            string
-	IP             string
-	AutoRetryHTTPS bool
-	StatusCode     int
-	RedirectChain  []string
-	Err            string
+	Domain               string
+	URL                  string
+	IP                   string
+	StatusCode           int
+	RedirectChain        []string
+	Err                  string
+	Retried              bool
+	RetriedStatusCode    int
+	RetriedRedirectChain []string
+	RetriedErr           string
 }
 
 func (db *DBConn) Insert(task cm.Task) error {
@@ -72,25 +79,40 @@ func (db *DBConn) Insert(task cm.Task) error {
 		IP:     task.IP,
 	}
 
-	if task.Err != nil {
-		dbDoc.Err = task.Err.Error()
-	}
 	if task.Resp != nil {
-		dbDoc.AutoRetryHTTPS = task.AutoRetryHTTPS
 		dbDoc.StatusCode = task.Resp.StatusCode
 		dbDoc.RedirectChain = task.RedirectChain
 	}
+	if task.Err != nil {
+		dbDoc.Err = task.Err.Error()
+	}
+	if task.AutoRetryHTTPS != nil && task.AutoRetryHTTPS.Retried {
+		dbDoc.Retried = task.AutoRetryHTTPS.Retried
+		if task.AutoRetryHTTPS.Resp != nil {
+			dbDoc.RetriedStatusCode = task.AutoRetryHTTPS.Resp.StatusCode
+			dbDoc.RetriedRedirectChain = task.AutoRetryHTTPS.RedirectChain
+		}
+		if task.AutoRetryHTTPS.Err != nil {
+			dbDoc.RetriedErr = (*task.AutoRetryHTTPS).Err.Error()
+		}
+	}
 
+	if !cm.GlobalConfig.DBlogging {
+		fmt.Println(dbDoc)
+		return nil
+	}
 	_, err := db.Collection.InsertOne(db.Ctx, dbDoc)
+	fmt.Println(dbDoc)
 	if err != nil {
 		log.Println(err) //TODO: do something
 	}
-	fmt.Println(dbDoc)
-
 	return err
 }
 
 func (db *DBConn) Disconnect() {
+	if !cm.GlobalConfig.DBlogging {
+		return
+	}
 	if err := db.Client.Disconnect(db.Ctx); err != nil {
 		panic(err)
 	}

@@ -27,9 +27,8 @@ func ReadTasksFromInput(filename string) ([]Task, error) {
 		}
 
 		tasks = append(tasks, Task{
-			Domain:         parsedURL.Hostname(),
-			URL:            URL,
-			AutoRetryHTTPS: false,
+			Domain: parsedURL.Hostname(),
+			URL:    URL,
 		})
 	}
 

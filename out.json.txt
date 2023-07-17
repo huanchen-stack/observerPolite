@@ -1,0 +1,80 @@
+[
+    {
+        _id: ObjectId("64b071b5c01626119eca27ea"),
+        domain: 'www.google.com',
+        url: 'http://www.google.com/maps/',
+        ip: '',
+        statuscode: 0,
+        redirectchain: null,
+        err: 'path /maps/ not allowd for http',
+        retried: true,
+        retriedstatuscode: 0,
+        retriedredirectchain: null,
+        retriederr: 'path /maps/ not allowd for https'
+    },
+    {
+        _id: ObjectId("64b071b6c01626119eca27eb"),
+        domain: 'www.example.com',
+        url: 'https://www.example.com/',
+        ip: '93.184.216.34',
+        statuscode: 200,
+        redirectchain: [],
+        err: '',
+        retried: false,
+        retriedstatuscode: 0,
+        retriedredirectchain: null,
+        retriederr: ''
+    },
+    {
+        _id: ObjectId("64b071b6c01626119eca27ec"),
+        domain: 'www.microsoft.com',
+        url: 'http://www.microsoft.com/',
+        ip: '23.216.81.152',
+        statuscode: 200,
+        redirectchain: [ '302 https://www.microsoft.com/en-us/' ],
+        err: '',
+        retried: false,
+        retriedstatuscode: 0,
+        retriedredirectchain: null,
+        retriederr: ''
+    },
+    {
+        _id: ObjectId("64b071b7c01626119eca27ed"),
+        domain: 'example.com',
+        url: 'http://example.com/example',
+        ip: '93.184.216.34',
+        statuscode: 404,
+        redirectchain: [],
+        err: '',
+        retried: true,
+        retriedstatuscode: 404,
+        retriedredirectchain: [],
+        retriederr: ''
+    },
+    {
+        _id: ObjectId("64b071bac01626119eca27ee"),
+        domain: 'www.microsoft.com',
+        url: 'https://www.microsoft.com/en-us',
+        ip: '23.216.81.152',
+        statuscode: 200,
+        redirectchain: [],
+        err: '',
+        retried: false,
+        retriedstatuscode: 0,
+        retriedredirectchain: null,
+        retriederr: ''
+    },
+    {
+        _id: ObjectId("64b071bec01626119eca27ef"),
+        domain: 'www.microsoft.com',
+        url: 'http://www.microsoft.com/en-us/windows/si/matrix.html',
+        ip: '23.216.81.152',
+        statuscode: 404,
+        redirectchain: [],
+        err: '',
+        retried: true,
+        retriedstatuscode: 0,
+        retriedredirectchain: null,
+        retriederr: 'path /en-us/windows/si/matrix.html not allowd for https'
+    }
+]

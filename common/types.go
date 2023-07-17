@@ -7,15 +7,25 @@ import (
 
 type Config struct {
 	ExpectedRuntime time.Duration
+	Timeout         time.Duration
 	Retries         int
+	DBlogging       bool
+	DBCollection    string
+}
+
+type AutoRetryHTTPS struct {
+	Retried       bool
+	RedirectChain []string
+	Resp          *http.Response
+	Err           error
 }
 
 type Task struct {
 	Domain         string
 	URL            string
-	AutoRetryHTTPS bool
 	IP             string
 	RedirectChain  []string
 	Resp           *http.Response
 	Err            error
+	AutoRetryHTTPS *AutoRetryHTTPS
 }

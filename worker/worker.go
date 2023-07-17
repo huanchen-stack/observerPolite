@@ -28,6 +28,26 @@ type DedicatedWorkerInterface interface {
 	HandleTask(task cm.Task)
 }
 
+func (dw *DedicatedWorker) ErrorLog(task *cm.Task, err *error) {
+	if (*task).AutoRetryHTTPS == nil {
+		(*task).Err = *err
+	} else if (*task).AutoRetryHTTPS != nil && (*task).AutoRetryHTTPS.Retried {
+		(*task).AutoRetryHTTPS.Err = *err
+	} else {
+		panic("error log is not working properly")
+	}
+}
+
+func (dw *DedicatedWorker) RespLog(task *cm.Task, resp *http.Response) {
+	if (*task).AutoRetryHTTPS == nil {
+		(*task).Resp = resp
+	} else if (*task).AutoRetryHTTPS != nil && (*task).AutoRetryHTTPS.Retried {
+		(*task).AutoRetryHTTPS.Resp = resp
+	} else {
+		panic("resp log is not working properly")
+	}
+}
+
 func (dw *DedicatedWorker) HandleTask(task cm.Task) {
 	// fmt.Println("work on task: ", task.Domain)
 
@@ -36,9 +56,12 @@ func (dw *DedicatedWorker) HandleTask(task cm.Task) {
 	defer func() {
 		if (task.Resp == nil || task.Resp.StatusCode != 200) && strings.HasPrefix(task.URL, "http://") {
 			task.URL = strings.Replace(task.URL, "http://", "https://", 1)
-			task.AutoRetryHTTPS = true
+			task.AutoRetryHTTPS = &cm.AutoRetryHTTPS{Retried: true}
 			dw.HandleTask(task)
 		} else {
+			if task.AutoRetryHTTPS != nil {
+				task.URL = strings.Replace(task.URL, "https://", "http://", 1)
+			}
 			*dw.AllResultsRef <- task
 		}
 	}()
@@ -48,23 +71,27 @@ func (dw *DedicatedWorker) HandleTask(task cm.Task) {
 	// Robot Check (only if robot.txt is found)
 	if parsedURL.Scheme == "http" {
 		if dw.robotHTTP != nil && !dw.robotHTTP.Test(parsedURL.Path) {
-			task.Err = fmt.Errorf("path %s not allowd for http", parsedURL.Path)
+			err := fmt.Errorf("path %s not allowd for http", parsedURL.Path)
+			dw.ErrorLog(&task, &err)
 			return
 		}
 	} else if parsedURL.Scheme == "https" {
 		if dw.robotHTTPS != nil && !dw.robotHTTPS.Test(parsedURL.Path) {
-			task.Err = fmt.Errorf("path %s not allowd for https", parsedURL.Path)
+			err := fmt.Errorf("path %s not allowd for https", parsedURL.Path)
+			dw.ErrorLog(&task, &err)
 			return
 		}
 	} else {
-		task.Err = fmt.Errorf("WRONG Scheme! (not http or https)")
+		err := fmt.Errorf("WRONG Scheme! (not http or https)")
+		dw.ErrorLog(&task, &err)
 		return
 	}
 
 	// DNS Lookup
 	ips, err := net.LookupIP(parsedURL.Hostname())
 	if err != nil {
-		task.Err = fmt.Errorf("DNS error: %w", err)
+		err := fmt.Errorf("DNS error: %w", err)
+		dw.ErrorLog(&task, &err)
 		return
 	}
 	for _, ip := range ips {
@@ -83,20 +110,21 @@ func (dw *DedicatedWorker) HandleTask(task cm.Task) {
 			port = "80"
 		}
 	}
-	conn, err := net.Dial("tcp", net.JoinHostPort(task.IP, port))
+	conn, err := net.DialTimeout("tcp", net.JoinHostPort(task.IP, port), cm.GlobalConfig.Timeout)
 	if err != nil {
-		task.Err = fmt.Errorf("TCP error: %w", err)
+		err := fmt.Errorf("TCP error: %w", err)
+		dw.ErrorLog(&task, &err)
 		return
 	}
-
-	var resp *http.Response
 
 	// TLS Handshake
 	if parsedURL.Scheme == "https" {
 		tlsConn := tls.Client(conn, &tls.Config{ServerName: parsedURL.Hostname()})
+		tlsConn.SetDeadline(time.Now().Add(cm.GlobalConfig.Timeout))
 		err := tlsConn.Handshake()
 		if err != nil {
-			task.Err = fmt.Errorf("TLS handshake error: %w", err)
+			err := fmt.Errorf("TLS handshake error: %w", err)
+			dw.ErrorLog(&task, &err)
 			return
 		}
 	}
@@ -104,33 +132,41 @@ func (dw *DedicatedWorker) HandleTask(task cm.Task) {
 	// Issue a request
 	req, err := http.NewRequest("GET", task.URL, nil)
 	if err != nil {
-		task.Err = fmt.Errorf("request creation error: %w", err)
+		err := fmt.Errorf("request creation error: %w", err)
+		dw.ErrorLog(&task, &err)
 		return
 	}
 	req.Header.Set("User-Agent", "Web Measure/1.0 (https://webresearch.eecs.umich.edu/overview-of-web-measurements/) Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.130 Safari/537.36")
 
 	// Redirect Chain
+	var redirectChain *[]string
+	if task.AutoRetryHTTPS == nil {
+		redirectChain = &task.RedirectChain
+	} else {
+		redirectChain = &task.AutoRetryHTTPS.RedirectChain
+	}
+	*redirectChain = []string{}
 	client := http.Client{
-		Timeout: time.Second * 30,
+		Timeout: cm.GlobalConfig.Timeout,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 10 {
 				return http.ErrUseLastResponse
 			}
-			task.RedirectChain = append(task.RedirectChain, strconv.Itoa(req.Response.StatusCode)+" "+req.URL.String())
+			*redirectChain = append(*redirectChain, strconv.Itoa(req.Response.StatusCode)+" "+req.URL.String())
 			return nil
 		},
 	}
 
 	// Send Request
-	resp, err = client.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
-		task.Err = fmt.Errorf("HTTPS request error: %w", err)
+		err := fmt.Errorf("HTTPS request error: %w", err)
+		dw.ErrorLog(&task, &err)
 		return
 	}
 	defer resp.Body.Close()
 
-	task.Resp = resp
-	task.Err = err
+	dw.RespLog(&task, resp)
 }
 
 func (dw *DedicatedWorker) FetchRobot(scheme string) error {
@@ -139,8 +175,8 @@ func (dw *DedicatedWorker) FetchRobot(scheme string) error {
 		Host:   dw.Domain,
 		Path:   "/robots.txt",
 	}
-
-	resp, err := http.Get(robotsURL.String())
+	client := http.Client{Timeout: cm.GlobalConfig.Timeout * 2}
+	resp, err := client.Get(robotsURL.String())
 	if err != nil {
 		return err
 	}
@@ -162,6 +198,7 @@ func (dw *DedicatedWorker) FetchRobot(scheme string) error {
 
 func (dw *DedicatedWorker) Start() {
 	crawlDelay := cm.GlobalConfig.ExpectedRuntime / time.Duration(len(dw.WorkerTasks))
+	fmt.Printf("Domain: %s  #Tasks: %d  Crawl-Delay: %s\n", dw.Domain, len(dw.WorkerTasks), crawlDelay.String())
 
 	// Bring in some Randomness
 	randSleep := time.Duration(rand.Int63n(int64(crawlDelay)))
@@ -171,16 +208,16 @@ func (dw *DedicatedWorker) Start() {
 	err := dw.FetchRobot("http")
 	if err != nil {
 		// TODO: do something
-		fmt.Println("robots.txt for %w (http) is not found", dw.Domain)
+		fmt.Printf("robots.txt for %w (http) is not found\n", dw.Domain)
 	}
 	err = dw.FetchRobot("https")
 	if err != nil {
 		// TODO: do something
-		fmt.Println("robots.txt for %w (https) is not found", dw.Domain)
+		fmt.Printf("robots.txt for %w (https) is not found\n", dw.Domain)
 	}
 
 	for task := range dw.WorkerTasks {
 		dw.HandleTask(task)
-		time.Sleep(crawlDelay) // sleep periodially
+		time.Sleep(crawlDelay) // sleep periodically
 	}
 }

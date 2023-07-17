@@ -1,7 +1,1 @@
-
-to be determined:
-    dns look up per thread?
-
-(optional) retries
-
-url  html#jdsfaoiefs stop at #!!!
+* db host locally
