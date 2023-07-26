@@ -201,7 +201,7 @@ func (dw *DedicatedWorker) Start() {
 	fmt.Printf("Domain: %s  #Tasks: %d  Crawl-Delay: %s\n", dw.Domain, len(dw.WorkerTasks), crawlDelay.String())
 
 	// Bring in some Randomness
-	randSleep := time.Duration(rand.Int63n(int64(crawlDelay)) / 5) // for testing
+	randSleep := time.Duration(rand.Int63n(int64(crawlDelay)))
 	time.Sleep(randSleep)
 
 	// Fetch robot.txt

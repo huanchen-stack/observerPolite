@@ -10,6 +10,6 @@ var GlobalConfig = Config{
 	Retries:         3,
 	DBlogging:       true,
 	DBURI:           "mongodb+srv://admin:admin@observerdb.borsr21.mongodb.net/?retryWrites=true&w=majority",
-	//DBURI:        "localhost:12345",
+	//DBURI:        "mongodb://localhost:12345",
 	DBCollection: "xTrialScan",
 }
