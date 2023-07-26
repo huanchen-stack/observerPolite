@@ -122,7 +122,7 @@ func (db *DBConn) Insert(task cm.Task) error {
 		return nil
 	}
 	_, err := db.Collection.InsertOne(db.Ctx, dbDoc)
-	fmt.Println(dbDoc)
+	//fmt.Println(dbDoc)
 	if err != nil {
 		log.Println(err) //TODO: do something
 	}

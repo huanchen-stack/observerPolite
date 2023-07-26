@@ -24,6 +24,7 @@ func ReadTasksFromInput(filename string) ([]Task, error) {
 		parsedURL, err := url.Parse(URL)
 		if err != nil {
 			fmt.Println("Error extracting domain from URL", err)
+			continue
 		}
 
 		tasks = append(tasks, Task{

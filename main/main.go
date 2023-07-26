@@ -18,7 +18,7 @@ func main() {
 	}
 
 	workerMap := make(map[string]*wk.DedicatedWorker)
-	allResults := make(chan cm.Task, 50000)
+	allResults := make(chan cm.Task, 100000)
 
 	for _, task := range tasks {
 		// Check if a worker for this domain already exists
