@@ -10,6 +10,7 @@ type Config struct {
 	Timeout         time.Duration
 	Retries         int
 	DBlogging       bool
+	DBURI           string
 	DBCollection    string
 }
 

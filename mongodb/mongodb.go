@@ -7,7 +7,9 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"log"
+	"net/url"
 	cm "observerPolite/common"
+	"strings"
 	"time"
 )
 
@@ -31,7 +33,7 @@ func (db *DBConn) Connect() {
 	}
 	// Use the SetServerAPIOptions() method to set the Stable API version to 1
 	serverAPI := options.ServerAPI(options.ServerAPIVersion1)
-	opts := options.Client().ApplyURI("mongodb+srv://admin:admin@observerdb.borsr21.mongodb.net/?retryWrites=true&w=majority").SetServerAPIOptions(serverAPI)
+	opts := options.Client().ApplyURI(cm.GlobalConfig.DBURI).SetServerAPIOptions(serverAPI)
 
 	// Create a new client and connect to the server
 	client, err := mongo.Connect(db.Ctx, opts)
@@ -65,6 +67,7 @@ type DBDocFmt struct {
 	IP                   string
 	StatusCode           int
 	RedirectChain        []string
+	ChangeSummary        []bool
 	Err                  string
 	Retried              bool
 	RetriedStatusCode    int
@@ -82,6 +85,23 @@ func (db *DBConn) Insert(task cm.Task) error {
 	if task.Resp != nil {
 		dbDoc.StatusCode = task.Resp.StatusCode
 		dbDoc.RedirectChain = task.RedirectChain
+		if len(dbDoc.RedirectChain) != 0 {
+			dst := dbDoc.RedirectChain[len(dbDoc.RedirectChain)-1]
+			dstL := strings.Split(dst, " ")
+			dstURL := dstL[len(dstL)-1]
+			dstParsed, err := url.Parse(dstURL)
+			if err != nil {
+				fmt.Println("do something") //TODO: fix this
+			}
+			oriParsed, err := url.Parse(dbDoc.URL)
+			if err != nil {
+				fmt.Println("do something") //TODO: fix this
+			}
+			dbDoc.ChangeSummary = append(dbDoc.ChangeSummary, oriParsed.Scheme != dstParsed.Scheme)
+			dbDoc.ChangeSummary = append(dbDoc.ChangeSummary, oriParsed.Hostname() != dstParsed.Hostname())
+			dbDoc.ChangeSummary = append(dbDoc.ChangeSummary, oriParsed.Path != dstParsed.Path)
+			dbDoc.ChangeSummary = append(dbDoc.ChangeSummary, oriParsed.RawQuery != dstParsed.RawQuery)
+		}
 	}
 	if task.Err != nil {
 		dbDoc.Err = task.Err.Error()

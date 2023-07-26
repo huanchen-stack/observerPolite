@@ -9,5 +9,7 @@ var GlobalConfig = Config{
 	Timeout:         30 * time.Second,
 	Retries:         3,
 	DBlogging:       true,
-	DBCollection:    "xTrialScan",
+	DBURI:           "mongodb+srv://admin:admin@observerdb.borsr21.mongodb.net/?retryWrites=true&w=majority",
+	//DBURI:        "localhost:12345",
+	DBCollection: "xTrialScan",
 }
