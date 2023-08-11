@@ -12,7 +12,7 @@ func main() {
 	dbConn := db.DBConn{context.Background(), nil, nil, nil}
 	dbConn.Connect()
 
-	tasks, err := cm.ReadTasksFromInput("input.txt")
+	tasks, err := cm.ReadTasksFromInput(cm.GlobalConfig.InputFileName)
 	if err != nil {
 		panic(err)
 	}
@@ -44,7 +44,7 @@ func main() {
 	for result := range allResults {
 		counter += 1
 
-		dbConn.Insert(result)
+		dbConn.Insert(cm.PrintTask(result))
 
 		if counter == len(tasks) {
 			break

@@ -5,11 +5,13 @@ import (
 )
 
 var GlobalConfig = Config{
+	InputFileName:   "input.txt",
 	ExpectedRuntime: 10 * time.Second,
-	Timeout:         30 * time.Second,
+	Timeout:         120 * time.Second,
 	Retries:         3,
-	DBlogging:       true,
+	DBlogging:       false,
 	//DBURI:           "mongodb+srv://admin:admin@observerdb.borsr21.mongodb.net/?retryWrites=true&w=majority",
-	DBURI:        "mongodb://localhost:27017",
-	DBCollection: "xTrialScan",
+	DBURI:           "mongodb://localhost:27017",
+	DBCollection:    "xTrialScan",
+	ESelfTagBuffLen: 10240,
 }
