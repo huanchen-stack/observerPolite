@@ -37,43 +37,65 @@ Result Handling: Main writes results from the result channel ***MongoDB***
 ```
 [
     {
-        _id: ObjectId("64b071b5c01626119eca27ea"),
-        domain: 'www.google.com',
-        url: 'http://www.google.com/maps/',
-        ip: '',
-        statuscode: 0,
-        redirectchain: null,
-        err: 'path /maps/ not allowd for http',
-        retried: true,
-        retriedstatuscode: 0,
-        retriedredirectchain: null,
-        retriederr: 'path /maps/ not allowd for https'
+    _id: ObjectId("64d7f248efc44cbde6332536"),
+    sourceurl: 'B',
+    domain: 'www.microsoft.com',
+    url: 'https://www.microsoft.com/en-us',
+    ip: '23.216.81.152',
+    redirectchain: [],
+    resp: {
+      statuscode: 200,
+      header: {
+        'Ms-Commit-Id': [ 'b073854' ],
+        'X-Vhost': [ 'publish_microsoft_s' ],
+        'Cache-Control': [ 'max-age=0,s-maxage=86400' ],
+        'Content-Type': [ 'text/html;charset=utf-8' ],
+        'X-Dispatcher': [ 'dispatcher2westus2' ],
+        'X-Rtag': [ 'AEM_PROD_Marketing' ],
+        'Strict-Transport-Security': [ 'max-age=31536000' ],
+        Tls_version: [ 'tls1.3' ],
+        'Ms-Cv': [ 'CASMicrosoftCV175f222a.0' ],
+        'X-Edgeconnect-Origin-Mex-Latency': [ '423' ],
+        'X-Edgeconnect-Midmile-Rtt': [ '0' ],
+        Etag: [ '"6558dbf2a5466fb03d14a682751ec447-gzip"' ],
+        'X-Version': [ '2023.809.100912.0003033343' ],
+        Date: [ 'Sat, 12 Aug 2023 20:57:44 GMT' ],
+        'Set-Cookie': [
+          'AEMDC=westus2; path=/; secure; SameSite=None',
+          'akacd_OneRF=1699649863~rv=99~id=72f704ac1115329fda7d5d77008ffdf9; path=/; Expires=Fri, 10 Nov 2023 20:57:43 GMT; Secure; SameSite=None',
+          'akacd_OneRF=1699649863~rv=99~id=72f704ac1115329fda7d5d77008ffdf9; path=/; Expires=Fri, 10 Nov 2023 20:57:43 GMT; Secure; SameSite=None'
+        ],
+        'Ms-Cv-Esi': [ 'CASMicrosoftCV175f222a.0' ],
+        Vary: [ 'Accept-Encoding' ],
+        'X-Frame-Options': [ 'SAMEORIGIN' ],
+        'X-Content-Type-Options': [ 'nosniff' ]
+      },
+      etag: '6558dbf2a5466fb03d14a682751ec447-gzip',
+      eselftag: 'da39a3ee5e6b4b0d3255bfef95601890afd80709'
     },
-    {
-        _id: ObjectId("64b071b6c01626119eca27ec"),
-        domain: 'www.microsoft.com',
-        url: 'http://www.microsoft.com/',
-        ip: '23.216.81.152',
-        statuscode: 200,
-        redirectchain: [ '302 https://www.microsoft.com/en-us/' ],
-        err: '',
-        retried: false,
-        retriedstatuscode: 0,
-        retriedredirectchain: null,
-        retriederr: ''
-    },
-    {
-        _id: ObjectId("64b071bec01626119eca27ef"),
-        domain: 'www.microsoft.com',
-        url: 'http://www.microsoft.com/en-us/windows/si/matrix.html',
-        ip: '23.216.81.152',
-        statuscode: 404,
-        redirectchain: [],
-        err: '',
-        retried: true,
-        retriedstatuscode: 0,
-        retriedredirectchain: null,
-        retriederr: 'path /en-us/windows/si/matrix.html not allowd for https'
+    err: '',
+    autoretryhttps: {
+      retried: false,
+      redirectchain: null,
+      resp: { statuscode: 0, header: null, etag: '', eselftag: '' },
+      err: ''
     }
+  },
+  {
+    _id: ObjectId("64d7f249efc44cbde6332537"),
+    sourceurl: 'B',
+    domain: 'www.google.com',
+    url: 'http://www.google.com/maps/',
+    ip: '',
+    redirectchain: null,
+    resp: { statuscode: 0, header: null, etag: '', eselftag: '' },
+    err: 'path /maps/ not allowd for http',
+    autoretryhttps: {
+      retried: true,
+      redirectchain: null,
+      resp: { statuscode: 0, header: null, etag: '', eselftag: '' },
+      err: 'path /maps/ not allowd for https'
+    }
+  }
 ]
 ```

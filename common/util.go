@@ -64,16 +64,13 @@ func PrintResp(resp http.Response) RespPrint {
 
 	if eTag, ok := resp.Header["Etag"]; ok {
 		storableResp.ETag = strings.Trim(eTag[0], "\"")
-		storableResp.ESelfTag = ""
-	} else {
-		buf := make([]byte, GlobalConfig.ESelfTagBuffLen)
-		n, err := io.ReadAtLeast(resp.Body, buf, GlobalConfig.ESelfTagBuffLen) // n = min(len, N)
-		if err != nil && err != io.ErrUnexpectedEOF {
-			//	TODO: DO SOMETHING
-		}
-		storableResp.ETag = ""
-		storableResp.ESelfTag = computeETag(buf[:n])
 	}
+	buf := make([]byte, GlobalConfig.ESelfTagBuffLen)
+	n, err := io.ReadAtLeast(resp.Body, buf, GlobalConfig.ESelfTagBuffLen) // n = min(len, N)
+	if err != nil && err != io.ErrUnexpectedEOF {
+		//	TODO: DO SOMETHING
+	}
+	storableResp.ESelfTag = computeETag(buf[:n])
 
 	return storableResp
 }
