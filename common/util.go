@@ -29,7 +29,7 @@ func ReadTasksFromInput(filename string) ([]Task, error) {
 		parsedURL, err := url.Parse(URL)
 		if err != nil {
 			fmt.Println("Error extracting domain from URL", err)
-			continue
+			continue // TODO: check if this is still executed... should be handled before
 		}
 		src := "" // program still works even if no sources are provided
 		if len(URLs) > 1 {
