@@ -6,14 +6,20 @@ import (
 )
 
 type Config struct {
-	InputFileName   string
-	ExpectedRuntime time.Duration
-	Timeout         time.Duration
-	Retries         int
-	DBlogging       bool
-	DBURI           string
-	DBCollection    string
-	ESelfTagBuffLen int
+	InputFileName      string
+	ExpectedRuntime    time.Duration
+	Timeout            time.Duration
+	Retries            int
+	DBlogging          bool
+	DBURI              string
+	DBCollection       string
+	DBCollectionComp   string
+	ESelfTagBuffLen    int
+	RetryPoliteness    time.Duration
+	HeartbeatEmailFrom string
+	HeartbeatEmailTo   string
+	HeartbeatEmailPW   string
+	HeartbeatDuration  time.Duration
 }
 
 type AutoRetryHTTPS struct {
@@ -24,37 +30,46 @@ type AutoRetryHTTPS struct {
 }
 
 type Task struct {
-	SourceURL      string
-	Domain         string
-	URL            string
-	IP             string
-	RedirectChain  []string
-	Resp           *http.Response
-	Err            error
-	AutoRetryHTTPS *AutoRetryHTTPS
+	SourceURL     string
+	Domain        string
+	URL           string
+	IP            string
+	RedirectChain []string
+	Resp          *http.Response
+	Err           error
+	Retry         *AutoRetryHTTPS
 }
 
 type RespPrint struct {
 	StatusCode int
 	Header     map[string][]string
 	ETag       string
-	ESelfTag   string // if Etag is not provided in header
+	ESelfTag   string
 }
 
-type AutoRetryHTTPSPrint struct {
+type DstChangePrint struct {
+	Scheme   bool
+	Hostname bool
+	Path     bool
+	Query    bool
+}
+
+type RetryPrint struct {
 	Retried       bool
 	RedirectChain []string
+	DstChange     DstChangePrint
 	Resp          RespPrint
 	Err           string
 }
 
 type TaskPrint struct {
-	SourceURL      string
-	Domain         string
-	URL            string
-	IP             string
-	RedirectChain  []string
-	Resp           RespPrint
-	Err            string
-	AutoRetryHTTPS AutoRetryHTTPSPrint
+	SourceURL     string
+	Domain        string
+	URL           string
+	IP            string
+	RedirectChain []string
+	DstChange     DstChangePrint
+	Resp          RespPrint
+	Err           string
+	Retry         RetryPrint
 }

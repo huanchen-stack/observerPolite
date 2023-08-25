@@ -75,6 +75,27 @@ func PrintResp(resp http.Response) RespPrint {
 	return storableResp
 }
 
+func PrintDstChange(ori string, dst string) DstChangePrint {
+	dstL := strings.Split(dst, " ")
+	dstURL := dstL[len(dstL)-1]
+	dstParsed, err := url.Parse(dstURL)
+	if err != nil {
+		fmt.Println("do something") //TODO: fix this
+	}
+	oriParsed, err := url.Parse(ori)
+	if err != nil {
+		fmt.Println("do something") //TODO: fix this
+	}
+
+	dstChangePrint := DstChangePrint{}
+	dstChangePrint.Scheme = dstParsed.Scheme != oriParsed.Scheme
+	dstChangePrint.Hostname = dstParsed.Hostname() != oriParsed.Hostname()
+	dstChangePrint.Path = dstParsed.Path != oriParsed.Path
+	dstChangePrint.Query = dstParsed.RawQuery != oriParsed.RawQuery
+
+	return dstChangePrint
+}
+
 func PrintTask(task Task) TaskPrint {
 	taskPrint := TaskPrint{
 		SourceURL: task.SourceURL,
@@ -84,6 +105,10 @@ func PrintTask(task Task) TaskPrint {
 	}
 
 	taskPrint.RedirectChain = task.RedirectChain
+	if len(taskPrint.RedirectChain) != 0 { // src -> dst change summary
+		dst := taskPrint.RedirectChain[len(taskPrint.RedirectChain)-1]
+		taskPrint.DstChange = PrintDstChange(taskPrint.URL, dst)
+	}
 	if task.Resp != nil {
 		taskPrint.Resp = PrintResp(*task.Resp)
 	}
@@ -91,14 +116,19 @@ func PrintTask(task Task) TaskPrint {
 		taskPrint.Err = task.Err.Error()
 	}
 
-	if task.AutoRetryHTTPS != nil && task.AutoRetryHTTPS.Retried {
-		taskPrint.AutoRetryHTTPS.Retried = task.AutoRetryHTTPS.Retried
-		taskPrint.AutoRetryHTTPS.RedirectChain = task.AutoRetryHTTPS.RedirectChain
-		if task.AutoRetryHTTPS.Resp != nil {
-			taskPrint.AutoRetryHTTPS.Resp = PrintResp(*task.AutoRetryHTTPS.Resp)
+	if task.Retry != nil && task.Retry.Retried {
+		taskPrint.Retry.Retried = task.Retry.Retried
+		taskPrint.Retry.RedirectChain = task.Retry.RedirectChain
+		if len(taskPrint.Retry.RedirectChain) != 0 { // src -> dst change summary
+			dst := taskPrint.Retry.RedirectChain[len(taskPrint.RedirectChain)-1]
+			dst = strings.Split(dst, "")[len(strings.Split(dst, ""))-1]
+			taskPrint.Retry.DstChange = PrintDstChange(taskPrint.URL, dst)
 		}
-		if task.AutoRetryHTTPS.Err != nil {
-			taskPrint.AutoRetryHTTPS.Err = (*task.AutoRetryHTTPS).Err.Error()
+		if task.Retry.Resp != nil {
+			taskPrint.Retry.Resp = PrintResp(*task.Retry.Resp)
+		}
+		if task.Retry.Err != nil {
+			taskPrint.Retry.Err = (*task.Retry).Err.Error()
 		}
 	}
 	return taskPrint

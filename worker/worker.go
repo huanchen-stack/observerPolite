@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"math/rand"
@@ -9,7 +10,7 @@ import (
 	"net/url"
 	cm "observerPolite/common"
 	"strconv"
-	"strings"
+	"sync"
 	"time"
 
 	"github.com/temoto/robotstxt"
@@ -19,6 +20,7 @@ type DedicatedWorker struct {
 	Domain        string
 	WorkerTasks   chan cm.Task
 	AllResultsRef *chan cm.Task
+	WG            *sync.WaitGroup
 	robotHTTP     *robotstxt.Group
 	robotHTTPS    *robotstxt.Group
 }
@@ -29,41 +31,29 @@ type DedicatedWorkerInterface interface {
 }
 
 func (dw *DedicatedWorker) ErrorLog(task *cm.Task, err *error) {
-	if (*task).AutoRetryHTTPS == nil {
+	if (*task).Retry == nil {
 		(*task).Err = *err
-	} else if (*task).AutoRetryHTTPS != nil && (*task).AutoRetryHTTPS.Retried {
-		(*task).AutoRetryHTTPS.Err = *err
+	} else if (*task).Retry != nil && (*task).Retry.Retried {
+		(*task).Retry.Err = *err
 	} else {
 		panic("error log is not working properly")
 	}
 }
 
 func (dw *DedicatedWorker) RespLog(task *cm.Task, resp *http.Response) {
-	if (*task).AutoRetryHTTPS == nil {
+	if (*task).Retry == nil {
 		(*task).Resp = resp
-	} else if (*task).AutoRetryHTTPS != nil && (*task).AutoRetryHTTPS.Retried {
-		(*task).AutoRetryHTTPS.Resp = resp
+	} else if (*task).Retry != nil && (*task).Retry.Retried {
+		(*task).Retry.Resp = resp
 	} else {
 		panic("resp log is not working properly")
 	}
 }
 
 func (dw *DedicatedWorker) HandleTask(task cm.Task) {
-	// fmt.Println("work on task: ", task.Domain)
 
-	// Add results to chan: TODO: add to DB instead
-	// Auto HTTPS retry
 	defer func() {
-		if (task.Resp == nil || task.Resp.StatusCode != 200) && strings.HasPrefix(task.URL, "http://") {
-			task.URL = strings.Replace(task.URL, "http://", "https://", 1)
-			task.AutoRetryHTTPS = &cm.AutoRetryHTTPS{Retried: true}
-			dw.HandleTask(task)
-		} else {
-			if task.AutoRetryHTTPS != nil {
-				task.URL = strings.Replace(task.URL, "https://", "http://", 1)
-			}
-			*dw.AllResultsRef <- task
-		}
+		*dw.AllResultsRef <- task
 	}()
 
 	parsedURL, _ := url.Parse(task.URL)
@@ -88,7 +78,16 @@ func (dw *DedicatedWorker) HandleTask(task cm.Task) {
 	}
 
 	// DNS Lookup
-	ips, err := net.LookupIP(parsedURL.Hostname())
+	dialer := &net.Dialer{
+		Timeout: time.Second * 5, // 5-second timeout
+	}
+	resolver := &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+			return dialer.DialContext(ctx, "udp", "8.8.8.8:53")
+		},
+	}
+	ips, err := resolver.LookupIP(context.Background(), "ip", parsedURL.Hostname())
 	if err != nil {
 		err := fmt.Errorf("DNS error: %w", err)
 		dw.ErrorLog(&task, &err)
@@ -141,10 +140,10 @@ func (dw *DedicatedWorker) HandleTask(task cm.Task) {
 
 	// Redirect Chain
 	var redirectChain *[]string
-	if task.AutoRetryHTTPS == nil {
+	if task.Retry == nil {
 		redirectChain = &task.RedirectChain
 	} else {
-		redirectChain = &task.AutoRetryHTTPS.RedirectChain
+		redirectChain = &task.Retry.RedirectChain
 	}
 	*redirectChain = []string{}
 	client := http.Client{
@@ -198,6 +197,9 @@ func (dw *DedicatedWorker) FetchRobot(scheme string) error {
 }
 
 func (dw *DedicatedWorker) Start() {
+
+	defer dw.WG.Done()
+
 	crawlDelay := cm.GlobalConfig.ExpectedRuntime / time.Duration(len(dw.WorkerTasks))
 	fmt.Printf("Domain: %s  #Tasks: %d  Crawl-Delay: %s\n", dw.Domain, len(dw.WorkerTasks), crawlDelay.String())
 
