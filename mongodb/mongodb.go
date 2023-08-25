@@ -119,7 +119,9 @@ func (db *DBConn) GetOne(key string, val string) cm.TaskPrint {
 	err := db.Collection.FindOne(context.Background(), filter).Decode(&result)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			fmt.Println("No documents found.")
+			return cm.TaskPrint{
+				URL: "",
+			}
 		} else {
 			log.Fatal(err)
 		}

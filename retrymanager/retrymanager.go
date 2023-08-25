@@ -21,6 +21,9 @@ type RetryManagerInterface interface {
 
 func (rm *RetryManager) HandleRetry(taskPrint cm.TaskPrint) bool {
 	prevResult := (rm.dbConnPrev.GetOne("url", taskPrint.URL))
+	if prevResult.URL == "" {
+		return false
+	}
 	var prevStatusCode int
 	var prevDst, prevErr, prevEtag, prevESelfTag string
 
