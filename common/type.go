@@ -9,6 +9,7 @@ type Config struct {
 	InputFileName      string
 	ExpectedRuntime    time.Duration
 	Timeout            time.Duration
+	WorkerStress       int
 	Retries            int
 	DBlogging          bool
 	DBURI              string
@@ -33,6 +34,7 @@ type Task struct {
 	SourceURL     string
 	Domain        string
 	URL           string
+	Schedule      time.Duration
 	IP            string
 	RedirectChain []string
 	Resp          *http.Response

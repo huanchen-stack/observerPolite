@@ -6,10 +6,13 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strings"
+	"time"
 )
 
 func ReadTasksFromInput(filename string) ([]Task, error) {
@@ -48,6 +51,55 @@ func ReadTasksFromInput(filename string) ([]Task, error) {
 	}
 
 	return tasks, nil
+}
+
+func ScheduleTasks(tasks []Task) [][]*Task {
+	//	1. Maintain a domain map
+	domainMap := make(map[string][]*Task)
+	for i, task := range tasks {
+		domainMap[task.Domain] = append(domainMap[task.Domain], &tasks[i])
+	}
+	//	2. Subgroups
+	var subGroups [][][]*Task
+	var tempGroups [][]*Task
+	var groupLen int
+	for _, taskList := range domainMap {
+		listLen := len(taskList)
+		if groupLen+listLen > GlobalConfig.WorkerStress {
+			subGroups = append(subGroups, tempGroups)
+			tempGroups = [][]*Task{}
+			groupLen = 0
+		}
+		tempGroups = append(tempGroups, taskList)
+		groupLen += listLen
+	}
+	if len(tempGroups) > 0 {
+		subGroups = append(subGroups, tempGroups)
+	}
+	//	3. Flat and Sort
+	var workerTaskList [][]*Task
+	for _, subGroup := range subGroups {
+		var flatList []*Task
+
+		//	Use Naive sort for now; switch to k-merge if needed
+		for _, taskList := range subGroup {
+			N := float64(len(taskList))
+			timeStep := GlobalConfig.ExpectedRuntime.Seconds() / N
+			randStart := rand.Float64() * timeStep
+			for _, task := range taskList {
+				(*task).Schedule = time.Duration(randStart * float64(time.Second))
+				flatList = append(flatList, task)
+				randStart += timeStep
+			}
+		}
+		sort.Slice(flatList, func(i, j int) bool {
+			return (*flatList[i]).Schedule.Seconds() < (*flatList[j]).Schedule.Seconds()
+		})
+
+		workerTaskList = append(workerTaskList, flatList)
+	}
+
+	return workerTaskList
 }
 
 func computeETag(data []byte) string {
