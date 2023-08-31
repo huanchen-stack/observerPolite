@@ -1,6 +1,6 @@
 Apply changes to the following items before any test runs.
 
-common/config.go:   ExpectedRuntime
-                    DBCollection
-main/main.go:       input filename
-                    allResults channel size
+1. Global Config
+2. Chan size:
+    main.go 26 29 63
+    retrymanager.go 112 114

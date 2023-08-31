@@ -13,7 +13,7 @@ var GlobalConfig = Config{
 	DBlogging:       false,
 	DBURI:           "mongodb+srv://admin:admin@observerdb.borsr21.mongodb.net/?retryWrites=true&w=majority",
 	//DBURI:              "mongodb://localhost:27017",
-	DBCollection:       "xRetryTest",
+	DBCollection:       "",
 	DBCollectionComp:   "empty",
 	ESelfTagBuffLen:    10240,
 	RetryPoliteness:    5 * time.Second,
