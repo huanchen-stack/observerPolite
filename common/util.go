@@ -172,7 +172,7 @@ func PrintTask(task Task) TaskPrint {
 		taskPrint.Retry.Retried = task.Retry.Retried
 		taskPrint.Retry.RedirectChain = task.Retry.RedirectChain
 		if len(taskPrint.Retry.RedirectChain) != 0 { // src -> dst change summary
-			dst := taskPrint.Retry.RedirectChain[len(taskPrint.RedirectChain)-1]
+			dst := taskPrint.Retry.RedirectChain[len(taskPrint.Retry.RedirectChain)-1]
 			dst = strings.Split(dst, "")[len(strings.Split(dst, ""))-1]
 			taskPrint.Retry.DstChange = PrintDstChange(taskPrint.URL, dst)
 		}
