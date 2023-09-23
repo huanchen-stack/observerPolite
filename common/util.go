@@ -6,16 +6,15 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
-	"sort"
 	"strings"
-	"time"
 )
 
-func ReadTasksFromInput(filename string) ([]Task, error) {
+func ReadTaskStrsFromInput(filename string) ([]string, error) {
+	// This function makes sure no task strings returned by this are invalid
+
 	file, err := os.Open(filename)
 	if err != nil {
 		return nil, err
@@ -24,40 +23,72 @@ func ReadTasksFromInput(filename string) ([]Task, error) {
 
 	scanner := bufio.NewScanner(file)
 
-	var tasks []Task
+	var taskStrs []string
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
-		URLs := strings.Split(line, ",")
-		URL := strings.TrimSpace(URLs[0])
-		parsedURL, err := url.Parse(URL)
+		strL := strings.Split(line, ",")
+		URL := strings.TrimSpace(strL[0])
+		_, err := url.Parse(URL)
 		if err != nil {
-			fmt.Println("Error extracting domain from URL", err)
+			fmt.Println("Error extracting domain from TaskStrs", err)
 			continue // TODO: check if this is still executed... should be handled before
 		}
 		src := "" // program still works even if no sources are provided
-		if len(URLs) > 1 {
-			src = strings.TrimSpace(URLs[1])
+		if len(strL) > 1 {
+			src = strings.TrimSpace(strL[1])
 		}
 
-		tasks = append(tasks, Task{
-			SourceURL: src,
-			Domain:    parsedURL.Hostname(),
-			URL:       URL,
-		})
+		taskStrs = append(taskStrs, URL+","+src)
+		//tasks = append(tasks, Task{
+		//	Source: src,
+		//	Hostname:    parsedURL.Hostname(),
+		//	TaskStrs:       TaskStrs,
+		//})
 	}
 
 	if err := scanner.Err(); err != nil {
 		return nil, err
 	}
 
-	return tasks, nil
+	return taskStrs, nil
 }
 
-func ScheduleTasks(tasks []Task) [][]*Task {
+func GroupTasks(taskStrs []string) [][][]string {
+	//	1. Maintain a domain map
+	domainMap := make(map[string][]string)
+	for _, taskStr := range taskStrs {
+		line := strings.TrimSpace(taskStr)
+		strL := strings.Split(line, ",")
+		URL := strings.TrimSpace(strL[0])
+		parsedURL, _ := url.Parse(URL) // no err should occur here (filtered by prev func)
+		domainMap[parsedURL.Hostname()] = append(domainMap[parsedURL.Hostname()], taskStr)
+	}
+	//	2. Subgroups
+	var subGroups [][][]string
+	var tempGroups [][]string
+	var groupLen int
+	for _, taskStrL := range domainMap {
+		listLen := len(taskStrL)
+		if groupLen+listLen > GlobalConfig.WorkerStress {
+			subGroups = append(subGroups, tempGroups)
+			tempGroups = [][]string{}
+			groupLen = 0
+		}
+		tempGroups = append(tempGroups, taskStrL)
+		groupLen += listLen
+	}
+	if len(tempGroups) > 0 {
+		subGroups = append(subGroups, tempGroups)
+	}
+
+	return subGroups
+}
+
+func ScheduleTasks(tasks []Task) [][][]*Task {
 	//	1. Maintain a domain map
 	domainMap := make(map[string][]*Task)
 	for i, task := range tasks {
-		domainMap[task.Domain] = append(domainMap[task.Domain], &tasks[i])
+		domainMap[task.Hostname] = append(domainMap[task.Hostname], &tasks[i])
 	}
 	//	2. Subgroups
 	var subGroups [][][]*Task
@@ -76,30 +107,33 @@ func ScheduleTasks(tasks []Task) [][]*Task {
 	if len(tempGroups) > 0 {
 		subGroups = append(subGroups, tempGroups)
 	}
-	//	3. Flat and Sort
-	var workerTaskList [][]*Task
-	for _, subGroup := range subGroups {
-		var flatList []*Task
 
-		//	Use Naive sort for now; switch to k-merge if needed
-		for _, taskList := range subGroup {
-			N := float64(len(taskList))
-			timeStep := GlobalConfig.ExpectedRuntime.Seconds() / N
-			randStart := rand.Float64() * timeStep
-			for _, task := range taskList {
-				(*task).Schedule = time.Duration(randStart * float64(time.Second))
-				flatList = append(flatList, task)
-				randStart += timeStep
-			}
-		}
-		sort.Slice(flatList, func(i, j int) bool {
-			return (*flatList[i]).Schedule.Seconds() < (*flatList[j]).Schedule.Seconds()
-		})
+	return subGroups
 
-		workerTaskList = append(workerTaskList, flatList)
-	}
+	////	3. Flat and Sort
+	//var workerTaskList [][]*Task
+	//for _, subGroup := range subGroups {
+	//	var flatList []*Task
+	//
+	//	//	Use Naive sort for now; switch to k-merge if needed
+	//	for _, taskList := range subGroup {
+	//		N := float64(len(taskList))
+	//		timeStep := GlobalConfig.ExpectedRuntime.Seconds() / N
+	//		randStart := rand.Float64() * timeStep
+	//		for _, task := range taskList {
+	//			(*task).Schedule = time.Duration(randStart * float64(time.Second))
+	//			flatList = append(flatList, task)
+	//			randStart += timeStep
+	//		}
+	//	}
+	//	sort.Slice(flatList, func(i, j int) bool {
+	//		return (*flatList[i]).Schedule.Seconds() < (*flatList[j]).Schedule.Seconds()
+	//	})
+	//
+	//	workerTaskList = append(workerTaskList, flatList)
+	//}
 
-	return workerTaskList
+	//return workerTaskList
 }
 
 func computeETag(data []byte) string {
@@ -133,10 +167,16 @@ func PrintDstChange(ori string, dst string) DstChangePrint {
 	dstParsed, err := url.Parse(dstURL)
 	if err != nil {
 		fmt.Println("do something") //TODO: fix this
+		return DstChangePrint{
+			Scheme: false, Hostname: false, Path: false, Query: false,
+		}
 	}
 	oriParsed, err := url.Parse(ori)
 	if err != nil {
 		fmt.Println("do something") //TODO: fix this
+		return DstChangePrint{
+			Scheme: false, Hostname: false, Path: false, Query: false,
+		}
 	}
 
 	dstChangePrint := DstChangePrint{}
@@ -150,8 +190,8 @@ func PrintDstChange(ori string, dst string) DstChangePrint {
 
 func PrintTask(task Task) TaskPrint {
 	taskPrint := TaskPrint{
-		SourceURL: task.SourceURL,
-		Domain:    task.Domain,
+		SourceURL: task.Source,
+		Domain:    task.Hostname,
 		URL:       task.URL,
 		IP:        task.IP,
 	}

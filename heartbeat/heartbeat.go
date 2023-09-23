@@ -47,7 +47,6 @@ func (hb *Heartbeat) Start() {
 			//do something
 			panic(err)
 		}
-		//fmt.Println(count)
 		if count == prevCount {
 			hb.sendEmail()
 		}

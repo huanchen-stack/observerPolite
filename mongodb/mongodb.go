@@ -64,7 +64,7 @@ func (db *DBConn) NewCollection(name string) {
 
 func (db *DBConn) Insert(dbDoc cm.TaskPrint) error {
 	if !cm.GlobalConfig.DBlogging {
-		//fmt.Println(dbDoc)
+		fmt.Println(dbDoc.URL)
 		return nil
 	}
 	_, err := db.Collection.InsertOne(db.Ctx, dbDoc)
@@ -72,6 +72,25 @@ func (db *DBConn) Insert(dbDoc cm.TaskPrint) error {
 		log.Println(err) //TODO: do something
 	}
 	return err
+}
+
+func (db *DBConn) BulkWrite(dbDocs []cm.TaskPrint) error {
+	if !cm.GlobalConfig.DBlogging {
+		for _, dbDoc := range dbDocs {
+			fmt.Println(dbDoc.URL)
+		}
+		return nil
+	}
+	var writes []mongo.WriteModel
+	for i, _ := range dbDocs {
+		writes = append(writes, mongo.NewInsertOneModel().SetDocument(dbDocs[i]))
+	}
+	bulkWriteOptions := options.BulkWrite().SetOrdered(false)
+	_, err := db.Collection.BulkWrite(db.Ctx, writes, bulkWriteOptions)
+	if err != nil {
+		// TODO: do something
+	}
+	return nil
 }
 
 func (db *DBConn) CreateIndex(idx string) error {

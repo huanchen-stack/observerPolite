@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"container/heap"
 	"context"
 	"crypto/tls"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"net/url"
 	cm "observerPolite/common"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -37,9 +39,10 @@ func FetchRobot(scheme string, hostname string) *robotstxt.Group {
 }
 
 type GeneralWorker struct {
-	WorkerTasks   chan cm.Task
-	AllResultsRef *chan cm.Task // those tasks can be copied into channels
-	robotstxt     map[string]map[string]*robotstxt.Group
+	WorkerTasksHeap cm.HeapSlice
+	WorkerTasks     chan cm.Task
+	AllResultsRef   *chan cm.Task // those tasks can be copied into channels
+	robotstxt       map[string]map[string]*robotstxt.Group
 }
 
 type GeneralWorkerInterface interface {
@@ -184,6 +187,30 @@ func (gw *GeneralWorker) HandleTask(task cm.Task, wg *sync.WaitGroup) {
 	gw.RespLog(&task, resp)
 }
 
+func (gw *GeneralWorker) FetchTask() cm.Task {
+	taskStrsByHostname := heap.Pop(&gw.WorkerTasksHeap).(cm.TaskStrsByHostname)
+
+	taskStr := <-taskStrsByHostname.TaskStrs
+	line := strings.TrimSpace(taskStr)
+	strL := strings.Split(line, ",")
+	URL := strings.TrimSpace(strL[0])
+	src := strings.TrimSpace(strL[1])
+	parsedURL, _ := url.Parse(URL)
+	task := cm.Task{
+		Source:   src,
+		Hostname: parsedURL.Hostname(),
+		URL:      URL,
+		Schedule: taskStrsByHostname.Schedule,
+	}
+
+	if len(taskStrsByHostname.TaskStrs) != 0 {
+		taskStrsByHostname.Schedule += taskStrsByHostname.Politeness
+		heap.Push(&gw.WorkerTasksHeap, taskStrsByHostname)
+	}
+
+	return task
+}
+
 func (gw *GeneralWorker) Start() {
 	gw.robotstxt = make(map[string]map[string]*robotstxt.Group)
 	gw.robotstxt["http"] = make(map[string]*robotstxt.Group)
@@ -191,12 +218,22 @@ func (gw *GeneralWorker) Start() {
 
 	var wg sync.WaitGroup
 	start := time.Now()
-	for task := range gw.WorkerTasks {
+
+	for len(gw.WorkerTasksHeap) != 0 {
+		task := gw.FetchTask()
 		time.Sleep(task.Schedule - time.Since(start))
 		//fmt.Printf("Time: %.2f | Initiating task %s (scheduled: %.2f)\n",
 		//	time.Since(start).Seconds(), task.URL, task.Schedule.Seconds())
 		wg.Add(1)
 		go gw.HandleTask(task, &wg)
 	}
+
+	//for task := range gw.WorkerTasks {
+	//	time.Sleep(task.Schedule - time.Since(start))
+	//	//fmt.Printf("Time: %.2f | Initiating task %s (scheduled: %.2f)\n",
+	//	//	time.Since(start).Seconds(), task.TaskStrs, task.Schedule.Seconds())
+	//	wg.Add(1)
+	//	go gw.HandleTask(task, &wg)
+	//}
 	wg.Wait()
 }

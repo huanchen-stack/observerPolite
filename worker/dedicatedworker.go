@@ -201,7 +201,7 @@ func (dw *DedicatedWorker) Start() {
 	defer dw.WG.Done()
 
 	crawlDelay := cm.GlobalConfig.ExpectedRuntime / time.Duration(len(dw.WorkerTasks))
-	fmt.Printf("Domain: %s  #Tasks: %d  Crawl-Delay: %s\n", dw.Domain, len(dw.WorkerTasks), crawlDelay.String())
+	fmt.Printf("Hostname: %s  #TaskStrs: %d  Crawl-Delay: %s\n", dw.Domain, len(dw.WorkerTasks), crawlDelay.String())
 
 	// Bring in some Randomness
 	randSleep := time.Duration(rand.Int63n(int64(crawlDelay)))

@@ -2,6 +2,7 @@ package retrymanager
 
 import (
 	"context"
+	"fmt"
 	cm "observerPolite/common"
 	db "observerPolite/mongodb"
 	wk "observerPolite/worker"
@@ -89,6 +90,7 @@ func (rm *RetryManager) Start() {
 	go func() {
 		ticker := time.NewTicker(cm.GlobalConfig.RetryPoliteness)
 		for range ticker.C {
+			fmt.Println("retry manager wakes up")
 			go func() {
 				// Retry task list is from CURRENT retry list
 				thisRetryList := rm.RetryList
@@ -118,6 +120,7 @@ func (rm *RetryManager) Start() {
 					worker.WorkerTasks <- thisRetryList[i]
 				}
 				close(worker.WorkerTasks)
+				thisRetryList = nil
 
 				go worker.Start()
 

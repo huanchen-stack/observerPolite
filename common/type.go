@@ -13,6 +13,7 @@ type Config struct {
 	Retries            int
 	DBlogging          bool
 	DBURI              string
+	DBWriteFrequency   time.Duration
 	DBCollection       string
 	DBCollectionComp   string
 	ESelfTagBuffLen    int
@@ -31,8 +32,8 @@ type AutoRetryHTTPS struct {
 }
 
 type Task struct {
-	SourceURL     string
-	Domain        string
+	Source        string
+	Hostname      string
 	URL           string
 	Schedule      time.Duration
 	IP            string
@@ -40,6 +41,12 @@ type Task struct {
 	Resp          *http.Response
 	Err           error
 	Retry         *AutoRetryHTTPS
+}
+
+type TaskStrsByHostname struct {
+	Schedule   time.Duration
+	Politeness time.Duration
+	TaskStrs   chan string
 }
 
 type RespPrint struct {
