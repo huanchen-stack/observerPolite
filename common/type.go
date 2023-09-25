@@ -18,6 +18,7 @@ type Config struct {
 	DBCollectionComp   string
 	ESelfTagBuffLen    int
 	RetryPoliteness    time.Duration
+	PProfDumpFrequency time.Duration
 	HeartbeatEmailFrom string
 	HeartbeatEmailTo   string
 	HeartbeatEmailPW   string

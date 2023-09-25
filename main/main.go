@@ -11,14 +11,52 @@ import (
 	db "observerPolite/mongodb"
 	rm "observerPolite/retrymanager"
 	wk "observerPolite/worker"
+	"os"
+	"runtime/pprof"
 	"sync"
 	"time"
 )
+
+func periodicHeapDump(filename string, duration time.Duration) {
+	ticker := time.NewTicker(duration)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		f, err := os.Create(filename)
+		if err != nil {
+			// Handle error
+			return
+		}
+		pprof.WriteHeapProfile(f)
+		f.Close()
+	}
+}
+
+func periodicGoroutineDump(filename string, duration time.Duration) {
+	ticker := time.NewTicker(duration)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		f, err := os.Create(filename)
+		if err != nil {
+			// Handle error
+			return
+		}
+		pprof.Lookup("goroutine").WriteTo(f, 0)
+		f.Close()
+	}
+}
 
 func main() {
 
 	go func() {
 		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
+	go func() {
+		periodicHeapDump("heap_pprof.out", cm.GlobalConfig.PProfDumpFrequency)
+	}()
+	go func() {
+		periodicGoroutineDump("goroutine_pprof.out", cm.GlobalConfig.PProfDumpFrequency)
 	}()
 
 	// Handle DB connection
