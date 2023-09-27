@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"github.com/temoto/robotstxt"
 	"net"
 	"net/http"
 	"net/url"
@@ -13,11 +14,9 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/temoto/robotstxt"
 )
 
-func FetchRobot(scheme string, hostname string) *robotstxt.Group {
+func FetchRobots(scheme string, hostname string) *robotstxt.Group {
 	robotsURL := url.URL{
 		Scheme: scheme,
 		Host:   hostname,
@@ -42,7 +41,8 @@ type GeneralWorker struct {
 	WorkerTasksHeap cm.HeapSlice
 	WorkerTasks     chan cm.Task
 	AllResultsRef   *chan cm.Task // those tasks can be copied into channels
-	robotstxt       map[string]map[string]*robotstxt.Group
+	robotstxts      map[string]map[string]*robotstxt.Group
+	mutex           sync.Mutex
 }
 
 type GeneralWorkerInterface interface {
@@ -85,11 +85,21 @@ func (gw *GeneralWorker) HandleTask(task cm.Task, wg *sync.WaitGroup) {
 	}
 
 	// robot.txt check
-	if _, ok := gw.robotstxt[parsedURL.Scheme][parsedURL.Hostname()]; !ok {
-		gw.robotstxt[parsedURL.Scheme][parsedURL.Hostname()] = FetchRobot(
-			parsedURL.Scheme, parsedURL.Hostname())
+	var robots *robotstxt.Group
+	gw.mutex.Lock()
+	if _, ok := gw.robotstxts[parsedURL.Scheme][parsedURL.Hostname()]; !ok {
+		gw.mutex.Unlock()
+
+		robots = FetchRobots(parsedURL.Scheme, parsedURL.Hostname())
+
+		gw.mutex.Lock()
+		gw.robotstxts[parsedURL.Scheme][parsedURL.Hostname()] = robots
+	} else {
+		robots = gw.robotstxts[parsedURL.Scheme][parsedURL.Hostname()]
 	}
-	if !gw.robotstxt[parsedURL.Scheme][parsedURL.Hostname()].Test(parsedURL.Path) {
+	gw.mutex.Unlock()
+
+	if !robots.Test(parsedURL.Path) {
 		err := fmt.Errorf("path %s not allowd for http", parsedURL.Path)
 		gw.ErrorLog(&task, &err)
 		return
@@ -97,12 +107,14 @@ func (gw *GeneralWorker) HandleTask(task cm.Task, wg *sync.WaitGroup) {
 
 	// DNS Lookup
 	dialer := &net.Dialer{
-		Timeout: time.Second * 5, // 5-second timeout
+		Timeout: time.Second * 10,
 	}
+	secureRandomIndex := cm.GetRandomIndex(len(cm.DNSServers))
+	dnsServer := cm.DNSServers[secureRandomIndex]
 	resolver := &net.Resolver{
 		PreferGo: true,
 		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-			return dialer.DialContext(ctx, "udp", "8.8.8.8:53")
+			return dialer.DialContext(ctx, "udp", dnsServer+":53")
 		},
 	}
 	ips, err := resolver.LookupIP(context.Background(), "ip", parsedURL.Hostname())
@@ -135,8 +147,9 @@ func (gw *GeneralWorker) HandleTask(task cm.Task, wg *sync.WaitGroup) {
 	}
 
 	// TLS Handshake
+	var tlsConn *tls.Conn
 	if parsedURL.Scheme == "https" {
-		tlsConn := tls.Client(conn, &tls.Config{ServerName: parsedURL.Hostname()})
+		tlsConn = tls.Client(conn, &tls.Config{ServerName: parsedURL.Hostname()})
 		tlsConn.SetDeadline(time.Now().Add(cm.GlobalConfig.Timeout))
 		err := tlsConn.Handshake()
 		if err != nil {
@@ -164,8 +177,18 @@ func (gw *GeneralWorker) HandleTask(task cm.Task, wg *sync.WaitGroup) {
 		redirectChain = &task.Retry.RedirectChain
 	}
 	*redirectChain = []string{}
+	transport := &http.Transport{
+		DisableKeepAlives: true,
+		DialContext: func(_ context.Context, network, addr string) (net.Conn, error) {
+			if parsedURL.Scheme == "https" {
+				return tlsConn, nil
+			}
+			return conn, nil
+		},
+	}
 	client := http.Client{
-		Timeout: cm.GlobalConfig.Timeout,
+		Transport: transport,
+		Timeout:   cm.GlobalConfig.Timeout,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 10 {
 				return http.ErrUseLastResponse
@@ -212,9 +235,9 @@ func (gw *GeneralWorker) FetchTask() cm.Task {
 }
 
 func (gw *GeneralWorker) Start() {
-	gw.robotstxt = make(map[string]map[string]*robotstxt.Group)
-	gw.robotstxt["http"] = make(map[string]*robotstxt.Group)
-	gw.robotstxt["https"] = make(map[string]*robotstxt.Group)
+	gw.robotstxts = make(map[string]map[string]*robotstxt.Group)
+	gw.robotstxts["http"] = make(map[string]*robotstxt.Group)
+	gw.robotstxts["https"] = make(map[string]*robotstxt.Group)
 
 	var wg sync.WaitGroup
 	start := time.Now()
@@ -228,12 +251,23 @@ func (gw *GeneralWorker) Start() {
 		go gw.HandleTask(task, &wg)
 	}
 
-	//for task := range gw.WorkerTasks {
-	//	time.Sleep(task.Schedule - time.Since(start))
-	//	//fmt.Printf("Time: %.2f | Initiating task %s (scheduled: %.2f)\n",
-	//	//	time.Since(start).Seconds(), task.TaskStrs, task.Schedule.Seconds())
-	//	wg.Add(1)
-	//	go gw.HandleTask(task, &wg)
-	//}
+	wg.Wait()
+}
+
+func (gw *GeneralWorker) StartWTasks() {
+	gw.robotstxts = make(map[string]map[string]*robotstxt.Group)
+	gw.robotstxts["http"] = make(map[string]*robotstxt.Group)
+	gw.robotstxts["https"] = make(map[string]*robotstxt.Group)
+
+	var wg sync.WaitGroup
+	start := time.Now()
+
+	for task := range gw.WorkerTasks {
+		time.Sleep(task.Schedule - time.Since(start))
+		//fmt.Printf("Time: %.2f | Initiating task %s (scheduled: %.2f)\n",
+		//	time.Since(start).Seconds(), task.URL, task.Schedule.Seconds())
+		wg.Add(1)
+		go gw.HandleTask(task, &wg)
+	}
 	wg.Wait()
 }

@@ -2,7 +2,9 @@ package common
 
 import (
 	"bufio"
+	"crypto/rand"
 	"crypto/sha1"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -82,6 +84,12 @@ func GroupTasks(taskStrs []string) [][][]string {
 	}
 
 	return subGroups
+}
+
+func GetRandomIndex(max int) int {
+	var n uint64
+	_ = binary.Read(rand.Reader, binary.BigEndian, &n)
+	return int(n % uint64(max))
 }
 
 func ScheduleTasks(tasks []Task) [][][]*Task {

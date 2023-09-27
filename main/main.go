@@ -81,7 +81,7 @@ func main() {
 
 	// Make workers
 	var workerList []wk.GeneralWorker
-	allResults := make(chan cm.Task, 1000)
+	allResults := make(chan cm.Task, 500000)
 
 	for i, _ := range workerTaskStrList {
 		workerTasksHeap := &cm.HeapSlice{}
@@ -121,7 +121,7 @@ func main() {
 	//}
 
 	// GO! RETRY MANAGER, GO!
-	taskPrints := make(chan cm.TaskPrint, 1000)
+	taskPrints := make(chan cm.TaskPrint, 500000)
 	retryManager := rm.RetryManager{
 		AllResults:    &allResults,
 		TaskPrintsRef: &taskPrints,
@@ -131,18 +131,25 @@ func main() {
 	// GO! DB GO!
 	go func() {
 		var writeBuff []cm.TaskPrint
+		var mutex sync.Mutex
+
 		go func() {
 			ticker := time.NewTicker(cm.GlobalConfig.DBWriteFrequency)
 			for range ticker.C {
+				mutex.Lock()
 				dbConn.BulkWrite(writeBuff)
 				for range writeBuff {
 					wg.Done()
 				}
 				writeBuff = writeBuff[:0]
+				mutex.Unlock()
 			}
 		}()
+
 		for taskPrint := range taskPrints {
+			mutex.Lock()
 			writeBuff = append(writeBuff, taskPrint)
+			mutex.Unlock()
 		}
 	}()
 

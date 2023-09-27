@@ -14,8 +14,9 @@ import (
 type RetryManager struct {
 	AllResults    *chan cm.Task
 	TaskPrintsRef *chan cm.TaskPrint
-	RetryList     []cm.Task
+	RetryBuff     []cm.Task
 	dbConnPrev    db.DBConn
+	mutex         sync.Mutex
 }
 
 type RetryManagerInterface interface {
@@ -91,56 +92,57 @@ func (rm *RetryManager) Start() {
 		ticker := time.NewTicker(cm.GlobalConfig.RetryPoliteness)
 		for range ticker.C {
 			fmt.Println("retry manager wakes up")
+			rm.mutex.Lock()
+
+			// Naive schedule
+			start := time.Duration(0.0)
+			for i, _ := range rm.RetryBuff {
+				rm.RetryBuff[i].Schedule = start
+				start = time.Duration(
+					(start.Seconds() +
+						cm.GlobalConfig.RetryPoliteness.Seconds()/float64(len(rm.RetryBuff))) *
+						float64(time.Second))
+				rm.RetryBuff[i].Retry = &cm.AutoRetryHTTPS{
+					Retried: true,
+				}
+			}
+
+			var wg sync.WaitGroup
+			wg.Add(len(rm.RetryBuff))
+
+			allRetryResults := make(chan cm.Task, len(rm.RetryBuff))
+			worker := wk.GeneralWorker{
+				WorkerTasks:   make(chan cm.Task, len(rm.RetryBuff)),
+				AllResultsRef: &allRetryResults,
+			}
+			for i, _ := range rm.RetryBuff {
+				worker.WorkerTasks <- rm.RetryBuff[i]
+			}
+			close(worker.WorkerTasks)
+			rm.RetryBuff = rm.RetryBuff[:0]
+
+			rm.mutex.Unlock()
+
+			go worker.StartWTasks()
+
 			go func() {
-				// Retry task list is from CURRENT retry list
-				thisRetryList := rm.RetryList
-				rm.RetryList = []cm.Task{}
-
-				// Naive schedule
-				start := time.Duration(0.0)
-				for i, _ := range thisRetryList {
-					thisRetryList[i].Schedule = start
-					start = time.Duration(
-						(start.Seconds() +
-							cm.GlobalConfig.RetryPoliteness.Seconds()/float64(len(thisRetryList))) *
-							float64(time.Second))
-					thisRetryList[i].Retry = &cm.AutoRetryHTTPS{
-						Retried: true,
-					}
+				for retryResult := range allRetryResults {
+					*rm.TaskPrintsRef <- cm.PrintTask(retryResult)
+					wg.Done()
 				}
-
-				var wg sync.WaitGroup
-				wg.Add(len(thisRetryList))
-				allRetryResults := make(chan cm.Task, 1000)
-				worker := wk.GeneralWorker{
-					WorkerTasks:   make(chan cm.Task, cm.GlobalConfig.WorkerStress),
-					AllResultsRef: &allRetryResults,
-				}
-				for i, _ := range thisRetryList {
-					worker.WorkerTasks <- thisRetryList[i]
-				}
-				close(worker.WorkerTasks)
-				thisRetryList = nil
-
-				go worker.Start()
-
-				go func() {
-					for retryResult := range allRetryResults {
-						*rm.TaskPrintsRef <- cm.PrintTask(retryResult)
-						wg.Done()
-					}
-				}()
-
-				wg.Wait()
-				close(allRetryResults)
 			}()
+
+			wg.Wait()
+			close(allRetryResults)
 		}
 	}()
 
 	for result := range *rm.AllResults {
 		resultPrint := cm.PrintTask(result)
 		if rm.NeedsRetry(resultPrint) {
-			rm.RetryList = append(rm.RetryList, result)
+			rm.mutex.Lock()
+			rm.RetryBuff = append(rm.RetryBuff, result)
+			rm.mutex.Unlock()
 		} else {
 			*rm.TaskPrintsRef <- resultPrint
 		}
