@@ -6,23 +6,24 @@ import (
 )
 
 type Config struct {
-	InputFileName      string
-	ExpectedRuntime    time.Duration
-	Timeout            time.Duration
-	WorkerStress       int
-	Retries            int
-	DBlogging          bool
-	DBURI              string
-	DBWriteFrequency   time.Duration
-	DBCollection       string
-	DBCollectionComp   string
-	ESelfTagBuffLen    int
-	RetryPoliteness    time.Duration
-	PProfDumpFrequency time.Duration
-	HeartbeatEmailFrom string
-	HeartbeatEmailTo   string
-	HeartbeatEmailPW   string
-	HeartbeatDuration  time.Duration
+	InputFileName         string
+	ExpectedRuntime       time.Duration
+	Timeout               time.Duration
+	WorkerStress          int
+	WorkerRobotsCacheSize int
+	Retries               int
+	DBlogging             bool
+	DBURI                 string
+	DBWriteFrequency      time.Duration
+	DBCollection          string
+	DBCollectionComp      string
+	ESelfTagBuffLen       int
+	RetryPoliteness       time.Duration
+	PProfDumpFrequency    time.Duration
+	HeartbeatEmailFrom    string
+	HeartbeatEmailTo      string
+	HeartbeatEmailPW      string
+	HeartbeatDuration     time.Duration
 }
 
 type AutoRetryHTTPS struct {

@@ -25,6 +25,11 @@ type RetryManagerInterface interface {
 }
 
 func (rm *RetryManager) NeedsRetry(taskPrint cm.TaskPrint) bool {
+	// if this try is blocked by robots.txt, don't retry
+	if len(taskPrint.Err) >= 4 && taskPrint.Err[0:4] == "path" {
+		return false
+	}
+
 	prevResult := rm.dbConnPrev.GetOne("url", taskPrint.URL) // GetOne (customized) always returns struct
 	if prevResult.URL == "" {
 		return false
@@ -123,7 +128,7 @@ func (rm *RetryManager) Start() {
 
 			rm.mutex.Unlock()
 
-			go worker.StartWTasks()
+			go worker.StartRetry()
 
 			go func() {
 				for retryResult := range allRetryResults {

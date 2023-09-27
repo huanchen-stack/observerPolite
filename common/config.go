@@ -5,13 +5,14 @@ import (
 )
 
 var GlobalConfig = Config{
-	InputFileName:   "input.txt",
-	ExpectedRuntime: 10 * time.Second,
-	Timeout:         120 * time.Second,
-	WorkerStress:    5000,
-	Retries:         3,
-	DBlogging:       false,
-	DBURI:           "mongodb+srv://admin:admin@observerdb.borsr21.mongodb.net/?retryWrites=true&w=majority",
+	InputFileName:         "input.txt",
+	ExpectedRuntime:       10 * time.Second,
+	Timeout:               120 * time.Second,
+	WorkerStress:          5000,
+	WorkerRobotsCacheSize: 500,
+	Retries:               3,
+	DBlogging:             false,
+	DBURI:                 "mongodb+srv://admin:admin@observerdb.borsr21.mongodb.net/?retryWrites=true&w=majority",
 	//DBURI:              "mongodb://localhost:27017",
 	DBWriteFrequency:   10 * time.Second,
 	DBCollection:       "",

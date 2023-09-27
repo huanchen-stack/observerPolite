@@ -14,8 +14,28 @@ import (
 	"strings"
 )
 
+func getExcludedHostnames() map[string]struct{} {
+	file, err := os.Open("excluded_domains.txt")
+	if err != nil {
+		panic("excluded_domains.txt doesn't exist!")
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+
+	excludedDomains := make(map[string]struct{})
+	for scanner.Scan() {
+		domain := strings.TrimSpace(scanner.Text())
+		fmt.Println(domain)
+		excludedDomains[domain] = struct{}{}
+	}
+
+	return excludedDomains
+}
+
 func ReadTaskStrsFromInput(filename string) ([]string, error) {
 	// This function makes sure no task strings returned by this are invalid
+	excludedHostnames := getExcludedHostnames()
 
 	file, err := os.Open(filename)
 	if err != nil {
@@ -30,10 +50,13 @@ func ReadTaskStrsFromInput(filename string) ([]string, error) {
 		line := strings.TrimSpace(scanner.Text())
 		strL := strings.Split(line, ",")
 		URL := strings.TrimSpace(strL[0])
-		_, err := url.Parse(URL)
+		parsedURL, err := url.Parse(URL)
 		if err != nil {
 			fmt.Println("Error extracting domain from TaskStrs", err)
 			continue // TODO: check if this is still executed... should be handled before
+		}
+		if _, ok := excludedHostnames[parsedURL.Hostname()]; ok {
+			continue
 		}
 		src := "" // program still works even if no sources are provided
 		if len(strL) > 1 {
@@ -41,11 +64,6 @@ func ReadTaskStrsFromInput(filename string) ([]string, error) {
 		}
 
 		taskStrs = append(taskStrs, URL+","+src)
-		//tasks = append(tasks, Task{
-		//	Source: src,
-		//	Hostname:    parsedURL.Hostname(),
-		//	TaskStrs:       TaskStrs,
-		//})
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -90,58 +108,6 @@ func GetRandomIndex(max int) int {
 	var n uint64
 	_ = binary.Read(rand.Reader, binary.BigEndian, &n)
 	return int(n % uint64(max))
-}
-
-func ScheduleTasks(tasks []Task) [][][]*Task {
-	//	1. Maintain a domain map
-	domainMap := make(map[string][]*Task)
-	for i, task := range tasks {
-		domainMap[task.Hostname] = append(domainMap[task.Hostname], &tasks[i])
-	}
-	//	2. Subgroups
-	var subGroups [][][]*Task
-	var tempGroups [][]*Task
-	var groupLen int
-	for _, taskList := range domainMap {
-		listLen := len(taskList)
-		if groupLen+listLen > GlobalConfig.WorkerStress {
-			subGroups = append(subGroups, tempGroups)
-			tempGroups = [][]*Task{}
-			groupLen = 0
-		}
-		tempGroups = append(tempGroups, taskList)
-		groupLen += listLen
-	}
-	if len(tempGroups) > 0 {
-		subGroups = append(subGroups, tempGroups)
-	}
-
-	return subGroups
-
-	////	3. Flat and Sort
-	//var workerTaskList [][]*Task
-	//for _, subGroup := range subGroups {
-	//	var flatList []*Task
-	//
-	//	//	Use Naive sort for now; switch to k-merge if needed
-	//	for _, taskList := range subGroup {
-	//		N := float64(len(taskList))
-	//		timeStep := GlobalConfig.ExpectedRuntime.Seconds() / N
-	//		randStart := rand.Float64() * timeStep
-	//		for _, task := range taskList {
-	//			(*task).Schedule = time.Duration(randStart * float64(time.Second))
-	//			flatList = append(flatList, task)
-	//			randStart += timeStep
-	//		}
-	//	}
-	//	sort.Slice(flatList, func(i, j int) bool {
-	//		return (*flatList[i]).Schedule.Seconds() < (*flatList[j]).Schedule.Seconds()
-	//	})
-	//
-	//	workerTaskList = append(workerTaskList, flatList)
-	//}
-
-	//return workerTaskList
 }
 
 func computeETag(data []byte) string {

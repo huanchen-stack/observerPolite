@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"github.com/golang/groupcache/lru"
 	"github.com/temoto/robotstxt"
 	"net"
 	"net/http"
@@ -15,6 +16,20 @@ import (
 	"sync"
 	"time"
 )
+
+type GeneralWorker struct {
+	WorkerTasksHeap cm.HeapSlice
+	WorkerTasks     chan cm.Task
+	AllResultsRef   *chan cm.Task // those tasks can be copied into channels
+	robotsCache     *lru.Cache
+	mutex           sync.RWMutex
+	bypassRobots    bool
+}
+
+type GeneralWorkerInterface interface {
+	Start()
+	HandleTask(task cm.Task)
+}
 
 func FetchRobots(scheme string, hostname string) *robotstxt.Group {
 	robotsURL := url.URL{
@@ -35,19 +50,6 @@ func FetchRobots(scheme string, hostname string) *robotstxt.Group {
 	}
 
 	return robots.FindGroup("*")
-}
-
-type GeneralWorker struct {
-	WorkerTasksHeap cm.HeapSlice
-	WorkerTasks     chan cm.Task
-	AllResultsRef   *chan cm.Task // those tasks can be copied into channels
-	robotstxts      map[string]map[string]*robotstxt.Group
-	mutex           sync.Mutex
-}
-
-type GeneralWorkerInterface interface {
-	Start()
-	HandleTask(task cm.Task)
 }
 
 func (gw *GeneralWorker) ErrorLog(task *cm.Task, err *error) {
@@ -85,24 +87,25 @@ func (gw *GeneralWorker) HandleTask(task cm.Task, wg *sync.WaitGroup) {
 	}
 
 	// robot.txt check
-	var robots *robotstxt.Group
-	gw.mutex.Lock()
-	if _, ok := gw.robotstxts[parsedURL.Scheme][parsedURL.Hostname()]; !ok {
-		gw.mutex.Unlock()
-
-		robots = FetchRobots(parsedURL.Scheme, parsedURL.Hostname())
-
+	if !gw.bypassRobots {
+		var robots *robotstxt.Group
 		gw.mutex.Lock()
-		gw.robotstxts[parsedURL.Scheme][parsedURL.Hostname()] = robots
-	} else {
-		robots = gw.robotstxts[parsedURL.Scheme][parsedURL.Hostname()]
-	}
-	gw.mutex.Unlock()
+		cacheValue, ok := gw.robotsCache.Get(parsedURL.Scheme + "://" + parsedURL.Hostname())
+		gw.mutex.Unlock()
+		if !ok {
+			robots = FetchRobots(parsedURL.Scheme, parsedURL.Hostname())
+			gw.mutex.Lock()
+			gw.robotsCache.Add(parsedURL.Scheme+"://"+parsedURL.Hostname(), robots)
+			gw.mutex.Unlock()
+		} else {
+			robots = cacheValue.(*robotstxt.Group)
+		}
 
-	if !robots.Test(parsedURL.Path) {
-		err := fmt.Errorf("path %s not allowd for http", parsedURL.Path)
-		gw.ErrorLog(&task, &err)
-		return
+		if !robots.Test(parsedURL.Path) {
+			err := fmt.Errorf("path %s not allowd for http", parsedURL.Path)
+			gw.ErrorLog(&task, &err)
+			return
+		}
 	}
 
 	// DNS Lookup
@@ -235,9 +238,7 @@ func (gw *GeneralWorker) FetchTask() cm.Task {
 }
 
 func (gw *GeneralWorker) Start() {
-	gw.robotstxts = make(map[string]map[string]*robotstxt.Group)
-	gw.robotstxts["http"] = make(map[string]*robotstxt.Group)
-	gw.robotstxts["https"] = make(map[string]*robotstxt.Group)
+	gw.robotsCache = lru.New(cm.GlobalConfig.WorkerRobotsCacheSize)
 
 	var wg sync.WaitGroup
 	start := time.Now()
@@ -254,10 +255,9 @@ func (gw *GeneralWorker) Start() {
 	wg.Wait()
 }
 
-func (gw *GeneralWorker) StartWTasks() {
-	gw.robotstxts = make(map[string]map[string]*robotstxt.Group)
-	gw.robotstxts["http"] = make(map[string]*robotstxt.Group)
-	gw.robotstxts["https"] = make(map[string]*robotstxt.Group)
+func (gw *GeneralWorker) StartRetry() {
+	gw.robotsCache = lru.New(0)
+	gw.bypassRobots = true
 
 	var wg sync.WaitGroup
 	start := time.Now()
