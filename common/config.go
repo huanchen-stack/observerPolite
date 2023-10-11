@@ -5,21 +5,23 @@ import (
 )
 
 var GlobalConfig = Config{
-	InputFileName:         "input.txt",
-	ExpectedRuntime:       10 * time.Second,
-	Timeout:               120 * time.Second,
-	WorkerStress:          5000,
-	WorkerRobotsCacheSize: 500,
-	Retries:               3,
-	DBlogging:             false,
-	DBURI:                 "mongodb+srv://admin:admin@observerdb.borsr21.mongodb.net/?retryWrites=true&w=majority",
-	//DBURI:              "mongodb://localhost:27017",
-	DBWriteFrequency:   10 * time.Second,
-	DBCollection:       "",
-	DBCollectionComp:   "empty",
-	ESelfTagBuffLen:    10240,
-	RetryPoliteness:    5 * time.Second,
-	PProfDumpFrequency: 5 * time.Second,
+	InputFileName:   "input.txt",
+	ExpectedRuntime: 30 * time.Second,  // expected total runtime
+	Timeout:         120 * time.Second, // see generalworker.go
+	WorkerStress:    5000,              // max number of tasks per worker
+	RobotsBuffSize:  5,                 // write robots to db in batches (also serve as "cache" before writing to db)
+	Retries:         3,                 // max number of retries when connection err
+	DBlogging:       true,              // write to database or print only
+	DBURI:           "mongodb+srv://admin:admin@observerdb.borsr21.mongodb.net/?retryWrites=true&w=majority",
+	//DBURI:              "mongodb://localhost:27017",    // use local mongodb on fable.eecs.umich.edu
+	DBWriteFrequency:   10 * time.Second, // write scan results to DB in batches
+	DBCollection:       "CompTest2_",     // new db collection name
+	DBCollectionComp:   "CompTest1_",     // prev db collection name (for comparison -> retry)
+	ESelfTagBuffLen:    10240,            // buff size for self Etag compute
+	RetryPoliteness:    5 * time.Second,  // retry frequency
+	PProfDumpFrequency: 5 * time.Second,  // profiler (heap/goroutine) dump frequency (for debug)
+
+	//Heartbeat configurations are deprecated... neglect for now
 	HeartbeatEmailFrom: "sunhuanchen99@gmail.com",
 	HeartbeatEmailPW:   "", //TODO:use app password
 	HeartbeatEmailTo:   "huanchen@umich.edu",

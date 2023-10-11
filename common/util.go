@@ -14,6 +14,9 @@ import (
 	"strings"
 )
 
+// getExcludedHostnames reads all excluded domains ( judici.com )
+//
+//	refer to the email on Sept 27th
 func getExcludedHostnames() map[string]struct{} {
 	file, err := os.Open("excluded_domains.txt")
 	if err != nil {
@@ -33,8 +36,12 @@ func getExcludedHostnames() map[string]struct{} {
 	return excludedDomains
 }
 
+// ReadTaskStrsFromInput reads all tasks from the input file
+//
+//	Each task: f"{url}, {source(wiki article)}" (sources are [optional])
+//	This function makes sure that all returned tasks strings are valid.
+//	Caller (main) is responsible for error handling
 func ReadTaskStrsFromInput(filename string) ([]string, error) {
-	// This function makes sure no task strings returned by this are invalid
 	excludedHostnames := getExcludedHostnames()
 
 	file, err := os.Open(filename)
@@ -53,7 +60,7 @@ func ReadTaskStrsFromInput(filename string) ([]string, error) {
 		parsedURL, err := url.Parse(URL)
 		if err != nil {
 			fmt.Println("Error extracting domain from TaskStrs", err)
-			continue // TODO: check if this is still executed... should be handled before
+			continue
 		}
 		if _, ok := excludedHostnames[parsedURL.Hostname()]; ok {
 			continue
@@ -73,8 +80,13 @@ func ReadTaskStrsFromInput(filename string) ([]string, error) {
 	return taskStrs, nil
 }
 
+// GroupTasks group all input tasks into subgroups
+//
+//	No hostnames are handled by multiple workers, this ensures maximum politeness
+//	All workers can handle >= 1 hostnames, but at most N tasks
+//	This function only return [][][]string, caller (main) is responsible for creating workers
 func GroupTasks(taskStrs []string) [][][]string {
-	//	1. Maintain a domain map
+	//	1. Maintain a hostname map (hostname -> list of taskStrs)
 	domainMap := make(map[string][]string)
 	for _, taskStr := range taskStrs {
 		line := strings.TrimSpace(taskStr)
@@ -83,7 +95,7 @@ func GroupTasks(taskStrs []string) [][][]string {
 		parsedURL, _ := url.Parse(URL) // no err should occur here (filtered by prev func)
 		domainMap[parsedURL.Hostname()] = append(domainMap[parsedURL.Hostname()], taskStr)
 	}
-	//	2. Subgroups
+	//	2. Group hostnames together, all workers can handle >= 1 hostnames, but at most N tasks
 	var subGroups [][][]string
 	var tempGroups [][]string
 	var groupLen int
@@ -116,6 +128,9 @@ func computeETag(data []byte) string {
 	return hex.EncodeToString(hash.Sum(nil))
 }
 
+// PrintResp is a helper for db logging, same as all other func PrintSomething
+//
+//	mongodb cannot dereference pointers, so all pointed values are dereferenced by this
 func PrintResp(resp http.Response) RespPrint {
 	storableResp := RespPrint{
 		StatusCode: resp.StatusCode,
@@ -126,6 +141,7 @@ func PrintResp(resp http.Response) RespPrint {
 		storableResp.ETag = strings.Trim(eTag[0], "\"")
 	}
 	buf := make([]byte, GlobalConfig.ESelfTagBuffLen)
+	// resp.Body is copied and stored for this step, so http.Response can be closed before this
 	n, err := io.ReadAtLeast(resp.Body, buf, GlobalConfig.ESelfTagBuffLen) // n = min(len, N)
 	if err != nil && err != io.ErrUnexpectedEOF {
 		//	TODO: DO SOMETHING
@@ -182,6 +198,7 @@ func PrintTask(task Task) TaskPrint {
 		taskPrint.Err = task.Err.Error()
 	}
 
+	// dereference the entire retry struct pointed by taskPrint.Retry
 	if task.Retry != nil && task.Retry.Retried {
 		taskPrint.Retry.Retried = task.Retry.Retried
 		taskPrint.Retry.RedirectChain = task.Retry.RedirectChain

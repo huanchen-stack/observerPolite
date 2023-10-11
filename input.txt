@@ -1,7 +1,14 @@
-http://example.com/example   , A
-https://www.example.com/ , A
-https://www.google.com/ , A
-http://www.google.com/maps/,  B
-http://www.microsoft.com/  , B
-https://www.microsoft.com/en-us,   B
-http://www.microsoft.com/en-us/windows/si/matrix.html, C
+http://www.reddit.com
+http://www.microsoft.com
+https://www.microsoft.com
+http://google.com
+https://google.com
+http://www.google.com
+https://www.google.com
+http://www.reddit.com
+http://www.microsoft.com
+https://www.microsoft.com
+http://google.com
+https://google.com
+http://www.google.com
+https://www.google.com

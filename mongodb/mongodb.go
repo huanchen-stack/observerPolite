@@ -20,16 +20,17 @@ type DBConn struct {
 
 type DBConnInterface interface {
 	Connect() // panic instead of returning error (FATAL)
-	Insert(task cm.Task) error
+	NewCollection(name string)
+	BulkWrite(dbDocs []cm.TaskPrint) error
+	CreateIndex(idx string) error
+	GetOne(key string, val string) cm.TaskPrint
 	Disconnect() // panic instead of return error (END OF PROGRAM)
 }
 
+// Connect is mostly copied from mongodb website.
+//
+//	PANIC when error; caller does not need to handle error
 func (db *DBConn) Connect() {
-	// DISABLE DB FOR DEBUG MODE
-	//if !cm.GlobalConfig.DBlogging {
-	//	return
-	//}
-
 	// Use the SetServerAPIOptions() method to set the Stable API version to 1
 	serverAPI := options.ServerAPI(options.ServerAPIVersion1)
 	opts := options.Client().ApplyURI(cm.GlobalConfig.DBURI).SetServerAPIOptions(serverAPI)
@@ -62,18 +63,6 @@ func (db *DBConn) NewCollection(name string) {
 	db.Collection = collection
 }
 
-func (db *DBConn) Insert(dbDoc cm.TaskPrint) error {
-	if !cm.GlobalConfig.DBlogging {
-		fmt.Println(dbDoc.URL)
-		return nil
-	}
-	_, err := db.Collection.InsertOne(db.Ctx, dbDoc)
-	if err != nil {
-		log.Println(err) //TODO: do something
-	}
-	return err
-}
-
 func (db *DBConn) BulkWrite(dbDocs []cm.TaskPrint) error {
 	if !cm.GlobalConfig.DBlogging {
 		for _, dbDoc := range dbDocs {
@@ -93,16 +82,21 @@ func (db *DBConn) BulkWrite(dbDocs []cm.TaskPrint) error {
 	return nil
 }
 
-func (db *DBConn) CreateIndex(idx string) error {
+// CreateIndex first check if index exists, then create one if it doesn't
+//
+//	This func is crucial for db lookup, which is as frequent as db write,
+//	because comparisons to prev scan results are always needed for retry.
+//	This func is always called at the beginning of the program, so PANIC when error occurs!
+func (db *DBConn) CreateIndex(idx string) {
 	indexes := db.Collection.Indexes()
-	cursor, err := indexes.List(context.Background())
+	cursor, err := indexes.List(db.Ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer cursor.Close(context.Background())
+	defer cursor.Close(db.Ctx)
 
 	indexExists := false
-	for cursor.Next(context.Background()) {
+	for cursor.Next(db.Ctx) {
 		var index map[string]interface{}
 		if err := cursor.Decode(&index); err != nil {
 			log.Fatal(err)
@@ -121,37 +115,32 @@ func (db *DBConn) CreateIndex(idx string) error {
 		indexModel := mongo.IndexModel{
 			Keys: map[string]interface{}{idx: 1}, // Ascending index
 		}
-		if _, err := indexes.CreateOne(context.Background(), indexModel); err != nil {
+		if _, err := indexes.CreateOne(db.Ctx, indexModel); err != nil {
 			log.Fatal(err)
-			return err
 		}
 		fmt.Println("Index on 'url' field created")
 	} else {
 		fmt.Println("Index on 'url' field already exists")
 	}
-	return nil
 }
 
 func (db *DBConn) GetOne(key string, val string) cm.TaskPrint {
 	filter := bson.M{key: val}
 	var result cm.TaskPrint
-	err := db.Collection.FindOne(context.Background(), filter).Decode(&result)
+	err := db.Collection.FindOne(db.Ctx, filter).Decode(&result)
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return cm.TaskPrint{
 				URL: "",
 			}
 		} else {
-			log.Fatal(err)
+			fmt.Println("do something") // TODO: fix this
 		}
 	}
 	return result
 }
 
 func (db *DBConn) Disconnect() {
-	//if !cm.GlobalConfig.DBlogging {
-	//	return
-	//}
 	if err := db.Client.Disconnect(db.Ctx); err != nil {
 		panic(err)
 	}
