@@ -1,0 +1,374 @@
+if task.Resp != nil {
+		dbDoc.StatusCode = task.Resp.StatusCode
+		dbDoc.RedirectChain = task.RedirectChain
+		if len(dbDoc.RedirectChain) != 0 { // src -> dst change summary
+			dst := dbDoc.RedirectChain[len(dbDoc.RedirectChain)-1]
+			dstL := strings.Split(dst, " ")
+			dstURL := dstL[len(dstL)-1]
+			dstParsed, err := url.Parse(dstURL)
+			if err != nil {
+				fmt.Println("do something") //TODO: fix this
+			}
+			oriParsed, err := url.Parse(dbDoc.URL)
+			if err != nil {
+				fmt.Println("do something") //TODO: fix this
+			}
+			dbDoc.ChangeSummary = append(dbDoc.ChangeSummary, oriParsed.Scheme != dstParsed.Scheme)
+			dbDoc.ChangeSummary = append(dbDoc.ChangeSummary, oriParsed.Hostname() != dstParsed.Hostname())
+			dbDoc.ChangeSummary = append(dbDoc.ChangeSummary, oriParsed.Path != dstParsed.Path)
+			dbDoc.ChangeSummary = append(dbDoc.ChangeSummary, oriParsed.RawQuery != dstParsed.RawQuery)
+		}
+	}
+	if task.Err != nil {
+		dbDoc.Err = task.Err.Error()
+	}
+	if task.AutoRetryHTTPS != nil && task.AutoRetryHTTPS.Retried {
+		dbDoc.Retried = task.AutoRetryHTTPS.Retried
+		if task.AutoRetryHTTPS.Resp != nil {
+			dbDoc.RetriedStatusCode = task.AutoRetryHTTPS.Resp.StatusCode
+			dbDoc.RetriedRedirectChain = task.AutoRetryHTTPS.RedirectChain
+		}
+		if task.AutoRetryHTTPS.Err != nil {
+			dbDoc.RetriedErr = (*task.AutoRetryHTTPS).Err.Error()
+		}
+	}
+
+
+func ScheduleTasks(tasks []Task) [][][]*Task {
+	//	1. Maintain a domain map
+	domainMap := make(map[string][]*Task)
+	for i, task := range tasks {
+		domainMap[task.Hostname] = append(domainMap[task.Hostname], &tasks[i])
+	}
+	//	2. Subgroups
+	var subGroups [][][]*Task
+	var tempGroups [][]*Task
+	var groupLen int
+	for _, taskList := range domainMap {
+		listLen := len(taskList)
+		if groupLen+listLen > GlobalConfig.WorkerStress {
+			subGroups = append(subGroups, tempGroups)
+			tempGroups = [][]*Task{}
+			groupLen = 0
+		}
+		tempGroups = append(tempGroups, taskList)
+		groupLen += listLen
+	}
+	if len(tempGroups) > 0 {
+		subGroups = append(subGroups, tempGroups)
+	}
+
+	return subGroups
+
+	////	3. Flat and Sort
+	//var workerTaskList [][]*Task
+	//for _, subGroup := range subGroups {
+	//	var flatList []*Task
+	//
+	//	//	Use Naive sort for now; switch to k-merge if needed
+	//	for _, taskList := range subGroup {
+	//		N := float64(len(taskList))
+	//		timeStep := GlobalConfig.ExpectedRuntime.Seconds() / N
+	//		randStart := rand.Float64() * timeStep
+	//		for _, task := range taskList {
+	//			(*task).Schedule = time.Duration(randStart * float64(time.Second))
+	//			flatList = append(flatList, task)
+	//			randStart += timeStep
+	//		}
+	//	}
+	//	sort.Slice(flatList, func(i, j int) bool {
+	//		return (*flatList[i]).Schedule.Seconds() < (*flatList[j]).Schedule.Seconds()
+	//	})
+	//
+	//	workerTaskList = append(workerTaskList, flatList)
+	//}
+
+	//return workerTaskList
+}
+
+
+
+
+func (gw *GeneralWorker) HandleTaskOLD(task cm.Task, wg *sync.WaitGroup) {
+
+	defer func() {
+		*gw.AllResultsRef <- task
+		(*wg).Done()
+	}()
+
+	// scheme sanity check
+	parsedURL, _ := url.Parse(task.URL)
+	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+		err := fmt.Errorf("WRONG Scheme! (not http or https)")
+		gw.ErrorLog(&task, &err)
+		return
+	}
+
+	// robot.txt check
+	var robots *robotstxt.Group
+	robotsCached := false
+
+	if !gw.bypassRobots {
+		group := gw.RBConn.Get(parsedURL.Scheme + "://" + parsedURL.Hostname())
+		if group != nil {
+			robotsCached = true
+			if !robots.Test(parsedURL.Path) {
+				err := fmt.Errorf("path %s not allowd for http", parsedURL.Path)
+				gw.ErrorLog(&task, &err)
+				return
+			}
+		}
+	}
+
+	// DNS Lookup
+	dialer := &net.Dialer{
+		Timeout: time.Second * 10,
+	}
+	secureRandomIndex := cm.GetRandomIndex(len(cm.DNSServers))
+	dnsServer := cm.DNSServers[secureRandomIndex]
+	resolver := &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+			return dialer.DialContext(ctx, "udp", dnsServer+":53")
+		},
+	}
+	ips, err := resolver.LookupIP(context.Background(), "ip", parsedURL.Hostname())
+	if err != nil {
+		err := fmt.Errorf("DNS error: %w", err)
+		gw.ErrorLog(&task, &err)
+		return
+	}
+	for _, ip := range ips {
+		if ipv4 := ip.To4(); ipv4 != nil {
+			task.IP = ipv4.String()
+			break
+		}
+	}
+
+	// TCP Connection
+	connSafe := SafeConn{
+		Conn:   nil,
+		isOpen: false,
+	}
+	tlsConnSafe := SafeConn{
+		Conn:   nil,
+		isOpen: false,
+	}
+	defer func() {
+		connSafe.Close()
+		tlsConnSafe.Close()
+	}()
+	// TODO: how to reuse those connections when redirecting???
+
+	port := parsedURL.Port()
+	if port == "" {
+		if parsedURL.Scheme == "https" {
+			port = "443"
+		} else if parsedURL.Scheme == "http" {
+			port = "80"
+		}
+	}
+	conn, err := net.DialTimeout("tcp", net.JoinHostPort(task.IP, port), cm.GlobalConfig.Timeout)
+	if err != nil {
+		err := fmt.Errorf("TCP error: %w", err)
+		gw.ErrorLog(&task, &err)
+		return
+	}
+	connSafe.Conn = conn
+	connSafe.isOpen = true
+
+	// TLS Handshake
+	var tlsConn *tls.Conn
+	if parsedURL.Scheme == "https" {
+		tlsConn = tls.Client(conn, &tls.Config{ServerName: parsedURL.Hostname()})
+		tlsConn.SetDeadline(time.Now().Add(cm.GlobalConfig.Timeout))
+		err := tlsConn.Handshake()
+		if err != nil {
+			err := fmt.Errorf("TLS handshake error: %w", err)
+			gw.ErrorLog(&task, &err)
+			return
+		}
+		tlsConnSafe.Conn = tlsConn
+		tlsConnSafe.isOpen = true
+	}
+
+	// robot.txt check
+	if !gw.bypassRobots && !robotsCached {
+		var conn_ net.Conn
+		if parsedURL.Scheme == "https" {
+			conn_ = tlsConn
+		} else {
+			conn_ = conn
+		}
+		robots = FetchRobots(parsedURL.Scheme, parsedURL.Hostname(), conn_)
+		robots = &robotstxt.Group{}
+
+		//gw.mutex.Lock()
+		//gw.robotsCache.Add(parsedURL.Scheme+"://"+parsedURL.Hostname(), robots)
+		//gw.mutex.Unlock()
+		gw.RBConn.Add(parsedURL.Scheme+"://"+parsedURL.Hostname(), time.Now(), robots)
+
+		if !robots.Test(parsedURL.Path) {
+			err := fmt.Errorf("path %s not allowd for http", parsedURL.Path)
+			gw.ErrorLog(&task, &err)
+			return
+		}
+	}
+
+	// Issue a request
+	req, err := http.NewRequest("GET", task.URL, nil)
+	if err != nil {
+		err := fmt.Errorf("request creation error: %w", err)
+		gw.ErrorLog(&task, &err)
+		return
+	}
+	req.Header.Set("User-Agent", "Web Measure/1.0 (https://webresearch.eecs.umich.edu/overview-of-web-measurements/) Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.130 Safari/537.36")
+	req.Header.Set("Cache-Control", "no-cache")
+
+	// Redirect Chain
+	var redirectChain *[]string
+	if task.Retry == nil {
+		redirectChain = &task.RedirectChain
+	} else {
+		redirectChain = &task.Retry.RedirectChain
+	}
+	*redirectChain = []string{}
+
+	// make a client!
+	transport := &http.Transport{}
+	if parsedURL.Scheme == "http" {
+		transport.DialContext = func(_ context.Context, network, addr string) (net.Conn, error) {
+			return conn, nil
+		}
+	} else {
+		transport.DialTLSContext = func(_ context.Context, network, addr string) (net.Conn, error) {
+			return tlsConn, nil
+		}
+	}
+
+	var client http.Client
+	client = http.Client{
+		Transport: transport,
+		Timeout:   cm.GlobalConfig.Timeout,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return http.ErrUseLastResponse
+			}
+
+			connSafe.Close()
+			tlsConnSafe.Close()
+			// TODO: figure out how to reuse connections
+			port = req.URL.Port()
+			if port == "" {
+				if req.URL.Scheme == "https" {
+					port = "443"
+				} else if req.URL.Scheme == "http" {
+					port = "80"
+				}
+			}
+			conn, err = net.DialTimeout("tcp", net.JoinHostPort(task.IP, port), cm.GlobalConfig.Timeout)
+			if err != nil {
+				fmt.Println("do something")
+			}
+			connSafe.Conn = conn
+			connSafe.isOpen = true
+
+			if req.URL.Scheme == "https" {
+				tlsConn = tls.Client(conn, &tls.Config{ServerName: parsedURL.Hostname()})
+				tlsConn.SetDeadline(time.Now().Add(cm.GlobalConfig.Timeout))
+				err := tlsConn.Handshake()
+				if err != nil {
+					fmt.Println("do something")
+				}
+				tlsConnSafe.Conn = tlsConn
+				tlsConnSafe.isOpen = true
+			}
+
+			newTransport := &http.Transport{}
+			if req.URL.Scheme == "http" {
+				newTransport.DialContext = func(_ context.Context, network, addr string) (net.Conn, error) {
+					return conn, nil
+				}
+			} else {
+				newTransport.DialTLSContext = func(_ context.Context, network, addr string) (net.Conn, error) {
+					return tlsConn, nil
+				}
+			}
+			client.Transport = newTransport
+
+			*redirectChain = append(
+				*redirectChain,
+				strconv.Itoa(req.Response.StatusCode)+" "+req.URL.String(),
+			)
+			return nil
+		},
+	}
+
+	// Send Request
+	resp, err := client.Do(req)
+	if err != nil {
+		//panic(err)
+		err := fmt.Errorf("HTTPS request error: %w", err)
+		gw.ErrorLog(&task, &err)
+		return
+	}
+	defer resp.Body.Close()
+
+	gw.RespLog(&task, resp)
+}
+
+
+
+
+//func (db *DBConn) Insert(dbDoc cm.TaskPrint) error {
+//	if !cm.GlobalConfig.DBlogging {
+//		fmt.Println(dbDoc.URL)
+//		return nil
+//	}
+//	_, err := db.Collection.InsertOne(db.Ctx, dbDoc)
+//	if err != nil {
+//		log.Println(err) //TODO: do something
+//	}
+//	return err
+//}
+
+
+func FetchRobots(scheme string, hostname string, conn net.Conn) *robotstxt.Group {
+	robotsURL := url.URL{
+		Scheme: scheme,
+		Host:   hostname,
+		Path:   "/robots.txt",
+	}
+	req, err := http.NewRequest("GET", robotsURL.String(), nil)
+	if err != nil {
+		fmt.Println("do something")
+	}
+	req.Header.Set("User-Agent", "Web Measure/1.0.robot_fetch (https://webresearch.eecs.umich.edu/overview-of-web-measurements/) Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.130 Safari/537.36")
+
+	transport := &http.Transport{
+		DisableKeepAlives: true,
+		DialContext: func(_ context.Context, network, addr string) (net.Conn, error) {
+			return conn, nil
+		},
+	}
+	client := http.Client{
+		Transport: transport,
+		Timeout:   cm.GlobalConfig.Timeout,
+	}
+
+	// Send Request
+	resp, err := client.Do(req)
+	if err != nil {
+		return &robotstxt.Group{}
+	}
+	defer resp.Body.Close()
+
+	robots, err := robotstxt.FromResponse(resp)
+	if err != nil {
+		return &robotstxt.Group{}
+	}
+
+	fmt.Println("fetching robots for https:")
+
+	return robots.FindGroup("*")
+}
