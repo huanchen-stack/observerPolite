@@ -1,0 +1,10 @@
+https://www.youtube.com/get_video
+https://www.youtube.com/signup
+https://www.youtube.com/feeds/videos.xml
+http://www.youtube.com/signup
+https://www.google.com/groups
+http://www.google.com/default
+http://www.youtube.com/get_video
+http://www.youtube.com/feeds/videos.xml
+http://www.google.com/groups
+https://www.google.com/default

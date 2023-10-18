@@ -112,11 +112,11 @@ func getPort(parsedURL *url.URL) string {
 	return port
 }
 
-func TCPConnect(IP string, port string) (*net.Conn, error) {
+func TCPConnect(IP string, port string, timeoutMult int) (*net.Conn, error) {
 	conn, err := net.DialTimeout(
 		"tcp",
 		net.JoinHostPort(IP, port),
-		cm.GlobalConfig.Timeout,
+		time.Duration(int64(cm.GlobalConfig.Timeout)*int64(timeoutMult)),
 	)
 	if err != nil {
 		err := fmt.Errorf("TCP error: %w", err)
@@ -125,9 +125,11 @@ func TCPConnect(IP string, port string) (*net.Conn, error) {
 	return &conn, nil
 }
 
-func TLSConnect(conn net.Conn, hostname string) (*net.Conn, error) {
+func TLSConnect(conn net.Conn, hostname string, timeoutMult int) (*net.Conn, error) {
 	tlsConn := tls.Client(conn, &tls.Config{ServerName: hostname})
-	tlsConn.SetDeadline(time.Now().Add(cm.GlobalConfig.Timeout))
+	tlsConn.SetDeadline(time.Now().Add(
+		time.Duration(int64(cm.GlobalConfig.Timeout) * int64(timeoutMult)),
+	))
 	err := tlsConn.Handshake()
 	if err != nil {
 		err := fmt.Errorf("TLS handshake error: %w", err)
@@ -142,7 +144,7 @@ func TLSConnect(conn net.Conn, hostname string) (*net.Conn, error) {
 //
 //	OT stands for ONE TIME, meaning the returned transport object can be only used ONCE!
 //	Error message is collected and thrown to caller! Caller is responsible to handle/throw the errors!
-func TransportLayerOT(parsedURL *url.URL) (*http.Transport, error) {
+func TransportLayerOT(parsedURL *url.URL, timeoutMult int) (*http.Transport, error) {
 	// DNS Lookup
 	IP, err := DNSLookUp(parsedURL.Hostname())
 	if err != nil {
@@ -151,7 +153,7 @@ func TransportLayerOT(parsedURL *url.URL) (*http.Transport, error) {
 
 	// TCP Connection
 	// TODO: how to reuse those connections when redirecting???
-	conn, err := TCPConnect(IP, getPort(parsedURL))
+	conn, err := TCPConnect(IP, getPort(parsedURL), timeoutMult)
 	if err != nil {
 		return nil, err
 	}
@@ -167,7 +169,7 @@ func TransportLayerOT(parsedURL *url.URL) (*http.Transport, error) {
 			return *conn, nil
 		}
 	} else {
-		tlsConn, err = TLSConnect(*conn, parsedURL.Hostname())
+		tlsConn, err = TLSConnect(*conn, parsedURL.Hostname(), timeoutMult)
 		if err != nil {
 			return nil, err
 		}
@@ -184,23 +186,33 @@ func TransportLayerOT(parsedURL *url.URL) (*http.Transport, error) {
 //	Upon redirection, MakeClient creates new One Time http.transport objects.
 //	Error message is collected and thrown to caller! Caller is responsible to handle/throw the errors!
 func MakeClient(parsedURL *url.URL, redirectChain *[]string) (*http.Client, error) {
-	transport, err := TransportLayerOT(parsedURL)
-	if err != nil {
-		return nil, err
+
+	// Auto retry upon transport layer errors (conn err)
+	timeoutMult := 1
+	transport, err := TransportLayerOT(parsedURL, timeoutMult)
+	for err != nil {
+		if timeoutMult > cm.GlobalConfig.Retries {
+			return nil, err
+		}
+		timeoutMult++
+		fmt.Printf("current mult %d\n\t...\n", timeoutMult)
+		transport, err = TransportLayerOT(parsedURL, timeoutMult)
 	}
 
 	var client *http.Client
 	client = &http.Client{
 		Transport: transport,
-		Timeout:   cm.GlobalConfig.Timeout,
+		Timeout:   time.Duration(int64(cm.GlobalConfig.Timeout) * int64(timeoutMult)),
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if len(via) >= 10 {
 				return http.ErrUseLastResponse
 			}
 
-			newTransport, err := TransportLayerOT(req.URL)
+			// use prev timeoutMult for the same task
+			//		(ideally for the same hostname with a timeout on this knowledge)
+			newTransport, err := TransportLayerOT(req.URL, timeoutMult)
 			if err != nil {
-				fmt.Println("do something")
+				return err
 			}
 			client.Transport = newTransport
 
@@ -291,18 +303,20 @@ func (gw *GeneralWorker) HandleTask(task cm.Task, wg *sync.WaitGroup) {
 		if err != nil {
 			robotsGroup = &robotstxt.Group{}
 		} else {
-			defer resp.Body.Close()
+			//defer resp.Body.Close()
 			body, _ := io.ReadAll(resp.Body)
 			respBodyStr = string(body)
+			expireStr := resp.Header.Get("Expires")
+			resp.Body.Close()
+			resp = nil
 			var robotsRaw *robotstxt.RobotsData
-			robotsRaw, err = robotstxt.FromResponse(resp)
+			robotsRaw, err = robotstxt.FromString(respBodyStr)
 			if err != nil {
 				robotsGroup = &robotstxt.Group{}
 			} else {
 				robotsGroup = robotsRaw.FindGroup("*")
-				expireStr := resp.Header.Get("Expires")
 				if expireStr != "" {
-					expiration, _ = time.Parse(time.RFC1123, resp.Header.Get("Expires"))
+					expiration, _ = time.Parse(time.RFC1123, expireStr)
 				}
 			}
 		}
@@ -334,7 +348,7 @@ func (gw *GeneralWorker) HandleTask(task cm.Task, wg *sync.WaitGroup) {
 	req, _ = MakeRequest(parsedURL)
 	resp, err = client.Do(req)
 	if err != nil {
-		panic(err)
+		//panic(err)
 		err = fmt.Errorf("HTTPS request error: %w", err)
 		return
 	}
@@ -348,7 +362,7 @@ func (gw *GeneralWorker) HandleTask(task cm.Task, wg *sync.WaitGroup) {
 //		each LIST has a scheduled start time (scan timestamp) and a politeness (scan duration)
 //	POP: find the LIST with the closest start time, pop a task, increment (next) start time by politeness
 //	FetchTask create tasks from taskStrs, this is to save heap memory.
-func (gw *GeneralWorker) FetchTask() cm.Task {
+func (gw *GeneralWorker) FetchTask() (cm.Task, time.Duration) {
 	taskStrsByHostname := heap.Pop(&gw.WorkerTasksHeap).(cm.TaskStrsByHostname)
 
 	taskStr := <-taskStrsByHostname.TaskStrs
@@ -357,11 +371,11 @@ func (gw *GeneralWorker) FetchTask() cm.Task {
 	URL := strings.TrimSpace(strL[0])
 	src := strings.TrimSpace(strL[1])
 	parsedURL, _ := url.Parse(URL)
+	taskSchedule := taskStrsByHostname.Schedule
 	task := cm.Task{
 		Source:   src,
 		Hostname: parsedURL.Hostname(),
 		URL:      URL,
-		Schedule: taskStrsByHostname.Schedule,
 	}
 
 	if len(taskStrsByHostname.TaskStrs) != 0 {
@@ -369,7 +383,7 @@ func (gw *GeneralWorker) FetchTask() cm.Task {
 		heap.Push(&gw.WorkerTasksHeap, taskStrsByHostname)
 	}
 
-	return task
+	return task, taskSchedule
 }
 
 func (gw *GeneralWorker) Start() {
@@ -378,8 +392,8 @@ func (gw *GeneralWorker) Start() {
 	start := time.Now()
 
 	for len(gw.WorkerTasksHeap) != 0 {
-		task := gw.FetchTask()
-		time.Sleep(task.Schedule - time.Since(start))
+		task, schedule := gw.FetchTask()
+		time.Sleep(schedule - time.Since(start))
 		//fmt.Printf("Time: %.2f | Initiating task %s (scheduled: %.2f)\n",
 		//	time.Since(start).Seconds(), task.URL, task.Schedule.Seconds())
 		wg.Add(1)
@@ -392,18 +406,17 @@ func (gw *GeneralWorker) Start() {
 // StartRetry is a special start funtion made for retry. This func is called by retry manager only.
 //
 //	If a worker is started with this func, there's no need to create tasks from strings or perform robots check.
-func (gw *GeneralWorker) StartRetry() {
+func (gw *GeneralWorker) StartRetry(politeness time.Duration) {
 	gw.bypassRobots = true
 
 	var wg sync.WaitGroup
-	start := time.Now()
 
 	for task := range gw.WorkerTasks {
-		time.Sleep(task.Schedule - time.Since(start))
+		go gw.HandleTask(task, &wg)
+		wg.Add(1)
+		time.Sleep(politeness)
 		//fmt.Printf("Time: %.2f | Initiating task %s (scheduled: %.2f)\n",
 		//	time.Since(start).Seconds(), task.URL, task.Schedule.Seconds())
-		wg.Add(1)
-		go gw.HandleTask(task, &wg)
 	}
 	wg.Wait()
 }

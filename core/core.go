@@ -1,4 +1,4 @@
-package main
+package core
 
 import (
 	"container/heap"
@@ -6,7 +6,6 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
-	_ "net/http/pprof"
 	cm "observerPolite/common"
 	db "observerPolite/mongodb"
 	rm "observerPolite/retrymanager"
@@ -47,17 +46,21 @@ func periodicGoroutineDump(filename string, duration time.Duration) {
 	}
 }
 
-func main() {
+func CORE() {
 
-	go func() {
-		log.Println(http.ListenAndServe("localhost:6060", nil)) // for pprof
-	}()
-	go func() {
-		periodicHeapDump("heap_pprof.out", cm.GlobalConfig.PProfDumpFrequency)
-	}()
-	go func() {
-		periodicGoroutineDump("goroutine_pprof.out", cm.GlobalConfig.PProfDumpFrequency)
-	}()
+	//cm.ParseFlags()
+
+	if cm.GlobalConfig.Debugging {
+		go func() {
+			log.Println(http.ListenAndServe("localhost:6060", nil)) // for pprof
+		}()
+		go func() {
+			periodicHeapDump("heap_pprof.out", cm.GlobalConfig.PProfDumpFrequency)
+		}()
+		go func() {
+			periodicGoroutineDump("goroutine_pprof.out", cm.GlobalConfig.PProfDumpFrequency)
+		}()
+	}
 
 	// Handle DB connection for scan results
 	dbConn := db.DBConn{
@@ -77,16 +80,14 @@ func main() {
 		CacheSize: cm.GlobalConfig.RobotsBuffSize,
 	}
 	rbConn.Connect()
-
 	// Read and parse from .txt
 	taskStrs, err := cm.ReadTaskStrsFromInput(cm.GlobalConfig.InputFileName)
 	if err != nil {
 		panic(err)
 	}
 
-	// Add WG: +1 per task
 	var wg sync.WaitGroup
-	wg.Add(len(taskStrs))
+	//wg.Add(len(taskStrs)) // before dedup
 
 	// Group tasks
 	workerTaskStrList := cm.GroupTasks(taskStrs)
@@ -111,6 +112,7 @@ func main() {
 			}
 			for k, _ := range workerTaskStrList[i][j] {
 				hp.TaskStrs <- workerTaskStrList[i][j][k]
+				wg.Add(1)
 			}
 			close(hp.TaskStrs)
 			heap.Push(&worker.WorkerTasksHeap, hp)

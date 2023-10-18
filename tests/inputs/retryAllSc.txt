@@ -1,0 +1,16 @@
+http://www.reddit.com
+http://www.microsoft.com
+https://www.microsoft.com
+http://google.com
+https://google.com
+http://www.google.com
+https://www.google.com
+http://www.youtube.com
+https://www.youtube.com
+http://www.amazon.com
+https://www.amazon.com
+https://developer.mozilla.org
+http://en.wikipedia.org/wiki/Wikipedia
+https://en.wikipedia.org/wiki/Wikipedia
+http://www.nytimes.com
+https://www.nytimes.com

@@ -6,6 +6,7 @@ import (
 )
 
 type Config struct {
+	Debugging          bool
 	InputFileName      string
 	ExpectedRuntime    time.Duration
 	Timeout            time.Duration
@@ -37,8 +38,6 @@ type Task struct {
 	Source        string
 	Hostname      string
 	URL           string
-	Schedule      time.Duration
-	IP            string
 	RedirectChain []string
 	Resp          *http.Response
 	Err           error

@@ -107,13 +107,8 @@ func (rm *RetryManager) Start() {
 			rm.mutex.Lock()
 
 			// Naive schedule since tasks are already spread out evenly
-			start := time.Duration(0.0)
+			//start := time.Duration(0.0)
 			for i, _ := range rm.RetryBuff {
-				rm.RetryBuff[i].Schedule = start
-				start = time.Duration(
-					(start.Seconds() +
-						cm.GlobalConfig.RetryPoliteness.Seconds()/float64(len(rm.RetryBuff))) *
-						float64(time.Second))
 				rm.RetryBuff[i].Retry = &cm.RetryHTTPS{
 					Retried: true,
 				}
@@ -124,6 +119,8 @@ func (rm *RetryManager) Start() {
 			wg.Add(len(rm.RetryBuff))
 
 			allRetryResults := make(chan cm.Task, len(rm.RetryBuff))
+			politeness := time.Duration( // use float64 -> inf to get around div by 0 exception
+				float64(cm.GlobalConfig.RetryPoliteness) / float64(len(rm.RetryBuff)))
 			worker := wk.GeneralWorker{
 				WorkerTasks:   make(chan cm.Task, len(rm.RetryBuff)),
 				AllResultsRef: &allRetryResults,
@@ -137,7 +134,7 @@ func (rm *RetryManager) Start() {
 			rm.mutex.Unlock()
 
 			// GO! RETRY WORKER GO!
-			go worker.StartRetry()
+			go worker.StartRetry(politeness)
 
 			go func() {
 				for retryResult := range allRetryResults {

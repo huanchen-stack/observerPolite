@@ -87,25 +87,36 @@ func ReadTaskStrsFromInput(filename string) ([]string, error) {
 //	This function only return [][][]string, caller (main) is responsible for creating workers
 func GroupTasks(taskStrs []string) [][][]string {
 	//	1. Maintain a hostname map (hostname -> list of taskStrs)
-	domainMap := make(map[string][]string)
+	domainMap := make(map[string]map[string]struct{}, 0)
 	for _, taskStr := range taskStrs {
 		line := strings.TrimSpace(taskStr)
 		strL := strings.Split(line, ",")
 		URL := strings.TrimSpace(strL[0])
 		parsedURL, _ := url.Parse(URL) // no err should occur here (filtered by prev func)
-		domainMap[parsedURL.Hostname()] = append(domainMap[parsedURL.Hostname()], taskStr)
+		if _, ok := domainMap[parsedURL.Hostname()]; !ok {
+			domainMap[parsedURL.Hostname()] = make(map[string]struct{}, 0)
+		}
+		if _, ok := domainMap[parsedURL.Hostname()][taskStr]; !ok { // deduplicate
+			domainMap[parsedURL.Hostname()][taskStr] = struct{}{}
+		}
 	}
 	//	2. Group hostnames together, all workers can handle >= 1 hostnames, but at most N tasks
 	var subGroups [][][]string
 	var tempGroups [][]string
 	var groupLen int
-	for _, taskStrL := range domainMap {
-		listLen := len(taskStrL)
+	for _, taskStrM := range domainMap {
+		listLen := len(taskStrM)
 		if groupLen+listLen > GlobalConfig.WorkerStress {
 			subGroups = append(subGroups, tempGroups)
 			tempGroups = [][]string{}
 			groupLen = 0
 		}
+		taskStrL := make([]string, len(taskStrM))
+		idx := 0
+		for k, _ := range taskStrM {
+			taskStrL[idx] = k
+			idx++
+		} // convert from map to string, use map for prev dedup
 		tempGroups = append(tempGroups, taskStrL)
 		groupLen += listLen
 	}
@@ -183,7 +194,7 @@ func PrintTask(task Task) TaskPrint {
 		SourceURL: task.Source,
 		Domain:    task.Hostname,
 		URL:       task.URL,
-		IP:        task.IP,
+		//IP:        task.IP,
 	}
 
 	taskPrint.RedirectChain = task.RedirectChain

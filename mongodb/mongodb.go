@@ -55,6 +55,9 @@ func (db *DBConn) Connect() {
 func (db *DBConn) NewCollection(name string) {
 	currentTime := time.Now()
 	timeString := currentTime.Format("01022006")
+	if len(name) > 4 && name[:4] == "test" { // Provides extra sanity for testing
+		timeString = ""
+	}
 	err := db.Database.CreateCollection(db.Ctx, cm.GlobalConfig.DBCollection+timeString)
 	if err != nil {
 		log.Fatal(err)
