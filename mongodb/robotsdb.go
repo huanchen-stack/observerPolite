@@ -85,6 +85,42 @@ func (rb *RobotsDBConn) Connect() {
 	rb.ExpireMap = make(map[string]time.Time, 0) // need size to indicate how full the map is
 	rb.CacheMap = make(map[string]*robotstxt.Group, 0)
 	rb.RespBodyMap = make(map[string]string, 0)
+
+	// create index
+	indexes := rb.Collection.Indexes()
+	cursor, err := indexes.List(rb.Ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer cursor.Close(rb.Ctx)
+
+	indexExists := false
+	for cursor.Next(rb.Ctx) {
+		var index map[string]interface{}
+		if err := cursor.Decode(&index); err != nil {
+			log.Fatal(err)
+		}
+		if key, ok := index["key"]; ok {
+			if keyMap, ok := key.(map[string]interface{}); ok {
+				if _, ok := keyMap["url"]; ok {
+					indexExists = true
+					break
+				}
+			}
+		}
+	}
+
+	if !indexExists {
+		indexModel := mongo.IndexModel{
+			Keys: map[string]interface{}{"url": 1}, // Ascending index
+		}
+		if _, err := indexes.CreateOne(rb.Ctx, indexModel); err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println("Index on 'url' field created")
+	} else {
+		fmt.Println("Index on 'url' field already exists")
+	}
 }
 
 // FetchOne fetched robotsPrint from db and extract robotstxt.Group when possible.
