@@ -38,6 +38,7 @@ type Task struct {
 	Source        string
 	Hostname      string
 	URL           string
+	IP            string
 	RedirectChain []string
 	Resp          *http.Response
 	Err           error

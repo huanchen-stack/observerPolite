@@ -144,16 +144,19 @@ func TLSConnect(conn net.Conn, hostname string, timeoutMult int) (*net.Conn, err
 //
 //	OT stands for ONE TIME, meaning the returned transport object can be only used ONCE!
 //	Error message is collected and thrown to caller! Caller is responsible to handle/throw the errors!
-func TransportLayerOT(parsedURL *url.URL, timeoutMult int) (*http.Transport, error) {
+func TransportLayerOT(parsedURL *url.URL, taskIP *string, timeoutMult int) (*http.Transport, error) {
 	// DNS Lookup
-	IP, err := DNSLookUp(parsedURL.Hostname())
-	if err != nil {
-		return nil, err
+	if *taskIP == "" {
+		IP, err := DNSLookUp(parsedURL.Hostname())
+		if err != nil {
+			return nil, err
+		}
+		*taskIP = IP
 	}
 
 	// TCP Connection
 	// TODO: how to reuse those connections when redirecting???
-	conn, err := TCPConnect(IP, getPort(parsedURL), timeoutMult)
+	conn, err := TCPConnect(*taskIP, getPort(parsedURL), timeoutMult)
 	if err != nil {
 		return nil, err
 	}
@@ -185,18 +188,18 @@ func TransportLayerOT(parsedURL *url.URL, timeoutMult int) (*http.Transport, err
 //
 //	Upon redirection, MakeClient creates new One Time http.transport objects.
 //	Error message is collected and thrown to caller! Caller is responsible to handle/throw the errors!
-func MakeClient(parsedURL *url.URL, redirectChain *[]string) (*http.Client, error) {
+func MakeClient(parsedURL *url.URL, redirectChain *[]string, taskIP *string) (*http.Client, error) {
 
 	// Auto retry upon transport layer errors (conn err)
 	timeoutMult := 1
-	transport, err := TransportLayerOT(parsedURL, timeoutMult)
+	transport, err := TransportLayerOT(parsedURL, taskIP, timeoutMult)
 	for err != nil {
 		if timeoutMult > cm.GlobalConfig.Retries {
 			return nil, err
 		}
 		timeoutMult++
 		fmt.Printf("current mult %d\n\t...\n", timeoutMult)
-		transport, err = TransportLayerOT(parsedURL, timeoutMult)
+		transport, err = TransportLayerOT(parsedURL, taskIP, timeoutMult)
 	}
 
 	var client *http.Client
@@ -210,7 +213,7 @@ func MakeClient(parsedURL *url.URL, redirectChain *[]string) (*http.Client, erro
 
 			// use prev timeoutMult for the same task
 			//		(ideally for the same hostname with a timeout on this knowledge)
-			newTransport, err := TransportLayerOT(req.URL, timeoutMult)
+			newTransport, err := TransportLayerOT(req.URL, taskIP, timeoutMult)
 			if err != nil {
 				return err
 			}
@@ -284,7 +287,7 @@ func (gw *GeneralWorker) HandleTask(task cm.Task, wg *sync.WaitGroup) {
 	}
 	*redirectChain = []string{}
 
-	client, err = MakeClient(parsedURL, redirectChain)
+	client, err = MakeClient(parsedURL, redirectChain, &task.IP)
 	if err != nil {
 		return
 	}
@@ -338,7 +341,7 @@ func (gw *GeneralWorker) HandleTask(task cm.Task, wg *sync.WaitGroup) {
 		)
 
 		*redirectChain = (*redirectChain)[:0]
-		client, err = MakeClient(parsedURL, redirectChain)
+		client, err = MakeClient(parsedURL, redirectChain, &task.IP)
 		if err != nil {
 			gw.ErrorLog(&task, &err)
 			return
