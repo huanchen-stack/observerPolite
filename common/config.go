@@ -6,7 +6,7 @@ import (
 )
 
 var GlobalConfig = Config{
-	Debugging:       false,
+	Debugging:       true,
 	InputFileName:   "input.txt",
 	ExpectedRuntime: 5 * time.Second,   // expected total runtime
 	Timeout:         120 * time.Second, // see generalworker.go

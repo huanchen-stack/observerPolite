@@ -20,7 +20,7 @@ import (
 
 type GeneralWorker struct {
 	WorkerTasksHeap cm.HeapSlice  // for first try
-	WorkerTasks     chan cm.Task  // for retry
+	WorkerTasksStrs chan string   // for retry
 	AllResultsRef   *chan cm.Task // those tasks can be copied into channels
 	RBConn          *db.RobotsDBConn
 	bypassRobots    bool
@@ -198,7 +198,6 @@ func MakeClient(parsedURL *url.URL, redirectChain *[]string, taskIP *string) (*h
 			return nil, err
 		}
 		timeoutMult++
-		fmt.Printf("current mult %d\n\t...\n", timeoutMult)
 		transport, err = TransportLayerOT(parsedURL, taskIP, timeoutMult)
 	}
 
@@ -287,7 +286,7 @@ func (gw *GeneralWorker) HandleTask(task cm.Task, wg *sync.WaitGroup) {
 	}
 	*redirectChain = []string{}
 
-	client, err = MakeClient(parsedURL, redirectChain, &task.IP)
+	client, err = MakeClient(parsedURL, redirectChain, &(task.IP))
 	if err != nil {
 		return
 	}
@@ -414,8 +413,13 @@ func (gw *GeneralWorker) StartRetry(politeness time.Duration) {
 
 	var wg sync.WaitGroup
 
-	for task := range gw.WorkerTasks {
-		go gw.HandleTask(task, &wg)
+	for urlStr := range gw.WorkerTasksStrs {
+		go gw.HandleTask(cm.Task{
+			URL: urlStr,
+			Retry: &cm.RetryHTTP{
+				Retried: true,
+			},
+		}, &wg)
 		wg.Add(1)
 		time.Sleep(politeness)
 		//fmt.Printf("Time: %.2f | Initiating task %s (scheduled: %.2f)\n",

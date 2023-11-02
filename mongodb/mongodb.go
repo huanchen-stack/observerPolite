@@ -66,23 +66,39 @@ func (db *DBConn) NewCollection(name string) {
 	db.Collection = collection
 }
 
-func (db *DBConn) BulkWrite(dbDocs []cm.TaskPrint) error {
+func (db *DBConn) BulkWrite(dbDocs []cm.TaskPrint) (int, error) {
 	if !cm.GlobalConfig.DBlogging {
+		panic("app won't work without dblogging for now!")
 		for _, dbDoc := range dbDocs {
 			fmt.Println(dbDoc.URL)
 		}
-		return nil
+		return 0, nil
 	}
+
 	var writes []mongo.WriteModel
-	for i, _ := range dbDocs {
-		writes = append(writes, mongo.NewInsertOneModel().SetDocument(dbDocs[i]))
+	doneWG := 0
+	for i, dbDoc := range dbDocs {
+		if dbDoc.Retry.Retried {
+			writes = append(writes, mongo.NewUpdateOneModel().SetFilter(
+				bson.M{"url": dbDoc.URL},
+			).SetUpdate(
+				bson.M{"$set": bson.M{"retry": dbDoc.Retry}},
+			))
+			doneWG++
+		} else {
+			if !dbDoc.NeedsRetry {
+				doneWG++
+			} else {
+			}
+			writes = append(writes, mongo.NewInsertOneModel().SetDocument(dbDocs[i]))
+		}
 	}
 	bulkWriteOptions := options.BulkWrite().SetOrdered(false)
 	_, err := db.Collection.BulkWrite(db.Ctx, writes, bulkWriteOptions)
 	if err != nil {
 		// TODO: do something
 	}
-	return nil
+	return doneWG, nil
 }
 
 // CreateIndex first check if index exists, then create one if it doesn't

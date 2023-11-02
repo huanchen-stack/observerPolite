@@ -14,7 +14,7 @@ import (
 type RetryManager struct {
 	AllResults    *chan cm.Task
 	TaskPrintsRef *chan cm.TaskPrint
-	RetryBuff     []cm.Task
+	RetryBuff     []string
 	dbConnPrev    db.DBConn
 	mutex         sync.Mutex // For RetryBuff
 }
@@ -106,14 +106,6 @@ func (rm *RetryManager) Start() {
 			fmt.Println("retry manager wakes up")
 			rm.mutex.Lock()
 
-			// Naive schedule since tasks are already spread out evenly
-			//start := time.Duration(0.0)
-			for i, _ := range rm.RetryBuff {
-				rm.RetryBuff[i].Retry = &cm.RetryHTTPS{
-					Retried: true,
-				}
-			}
-
 			// WG: +1 per retry task assigned to worker
 			var wg sync.WaitGroup
 			wg.Add(len(rm.RetryBuff))
@@ -122,13 +114,13 @@ func (rm *RetryManager) Start() {
 			politeness := time.Duration( // use float64 -> inf to get around div by 0 exception
 				float64(cm.GlobalConfig.RetryPoliteness) / float64(len(rm.RetryBuff)))
 			worker := wk.GeneralWorker{
-				WorkerTasks:   make(chan cm.Task, len(rm.RetryBuff)),
-				AllResultsRef: &allRetryResults,
+				WorkerTasksStrs: make(chan string, len(rm.RetryBuff)),
+				AllResultsRef:   &allRetryResults,
 			}
 			for i, _ := range rm.RetryBuff {
-				worker.WorkerTasks <- rm.RetryBuff[i]
+				worker.WorkerTasksStrs <- rm.RetryBuff[i]
 			}
-			close(worker.WorkerTasks)
+			close(worker.WorkerTasksStrs)
 			rm.RetryBuff = rm.RetryBuff[:0]
 
 			rm.mutex.Unlock()
@@ -152,10 +144,11 @@ func (rm *RetryManager) Start() {
 		resultPrint := cm.PrintTask(result)
 		if rm.NeedsRetry(resultPrint) { // append to buff if task needs retry
 			rm.mutex.Lock()
-			rm.RetryBuff = append(rm.RetryBuff, result)
+			rm.RetryBuff = append(rm.RetryBuff, result.URL)
 			rm.mutex.Unlock()
-		} else { // kick to DB (print) otherwise
-			*rm.TaskPrintsRef <- resultPrint
+			resultPrint.NeedsRetry = true
 		}
+
+		*rm.TaskPrintsRef <- resultPrint
 	}
 }

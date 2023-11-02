@@ -72,6 +72,7 @@ func CORE() {
 	dbConn.Connect()
 	if cm.GlobalConfig.DBCollection != "" { // for debugging
 		dbConn.NewCollection(cm.GlobalConfig.DBCollection)
+		dbConn.CreateIndex("url")
 	}
 
 	// Handle DB connection for robots.txt
@@ -87,7 +88,6 @@ func CORE() {
 	}
 
 	var wg sync.WaitGroup
-	//wg.Add(len(taskStrs)) // before dedup
 
 	// Group tasks
 	workerTaskStrList := cm.GroupTasks(taskStrs)
@@ -152,8 +152,8 @@ func CORE() {
 			ticker := time.NewTicker(cm.GlobalConfig.DBWriteFrequency)
 			for range ticker.C {
 				mutex.Lock()
-				dbConn.BulkWrite(writeBuff)
-				for range writeBuff {
+				doneWG, _ := dbConn.BulkWrite(writeBuff)
+				for i := 0; i < doneWG; i++ {
 					wg.Done()
 				}
 				writeBuff = writeBuff[:0]

@@ -194,7 +194,7 @@ func PrintTask(task Task) TaskPrint {
 		SourceURL: task.Source,
 		Domain:    task.Hostname,
 		URL:       task.URL,
-		//IP:        task.IP,
+		IP:        task.IP,
 	}
 
 	taskPrint.RedirectChain = task.RedirectChain

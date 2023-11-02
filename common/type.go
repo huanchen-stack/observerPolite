@@ -27,7 +27,7 @@ type Config struct {
 	HeartbeatDuration  time.Duration
 } // all hyperparameters users are allowed to config
 
-type RetryHTTPS struct {
+type RetryHTTP struct {
 	Retried       bool
 	RedirectChain []string
 	Resp          *http.Response
@@ -42,7 +42,7 @@ type Task struct {
 	RedirectChain []string
 	Resp          *http.Response
 	Err           error
-	Retry         *RetryHTTPS
+	Retry         *RetryHTTP
 } // stores scan results
 
 type TaskStrsByHostname struct {
@@ -82,6 +82,7 @@ type TaskPrint struct {
 	DstChange     DstChangePrint
 	Resp          RespPrint
 	Err           string
+	NeedsRetry    bool
 	Retry         RetryPrint
 } // db logging helper
 
