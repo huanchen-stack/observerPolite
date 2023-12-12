@@ -1,7 +1,6 @@
 package common
 
 import (
-	"net/http"
 	"time"
 )
 
@@ -27,24 +26,6 @@ type Config struct {
 	HeartbeatDuration  time.Duration
 } // all hyperparameters users are allowed to config
 
-type RetryHTTP struct {
-	Retried       bool
-	RedirectChain []string
-	Resp          *http.Response
-	Err           error
-} // created for the Task struct
-
-type Task struct {
-	Source        string
-	Hostname      string
-	URL           string
-	IP            string
-	RedirectChain []string
-	Resp          *http.Response
-	Err           error
-	Retry         *RetryHTTP
-} // stores scan results
-
 type TaskStrsByHostname struct {
 	Schedule   time.Duration
 	Politeness time.Duration
@@ -56,6 +37,7 @@ type RespPrint struct {
 	Header     map[string][]string
 	ETag       string // ETag in http response
 	ESelfTag   string // ETag computed by this scanner
+	Size       int
 } // created for TaskPrint and RetryPrint; db logging helper
 
 type DstChangePrint struct {
@@ -65,17 +47,17 @@ type DstChangePrint struct {
 	Query    bool
 } // created for RetryPrint; redirect analysis helper
 
-type RetryPrint struct {
+type RetryHTTPPrint struct {
 	Retried       bool
 	RedirectChain []string
 	DstChange     DstChangePrint
 	Resp          RespPrint
 	Err           string
-} // created for TaskPrint; db logging helper
+} // created for the TaskPrint struct
 
 type TaskPrint struct {
-	SourceURL     string
-	Domain        string
+	Source        string
+	Hostname      string
 	URL           string
 	IP            string
 	RedirectChain []string
@@ -83,8 +65,29 @@ type TaskPrint struct {
 	Resp          RespPrint
 	Err           string
 	NeedsRetry    bool
-	Retry         RetryPrint
-} // db logging helper
+	Retry         RetryHTTPPrint
+} // stores scan results
+
+//type RetryPrint struct {
+//	Retried       bool
+//	RedirectChain []string
+//	DstChange     DstChangePrint
+//	RespPrint     RespPrint
+//	Err           string
+//} // created for TaskPrint; db logging helper
+
+//type TaskPrint struct {
+//	SourceURL     string
+//	Hostname      string
+//	URL           string
+//	IP            string
+//	RedirectChain []string
+//	DstChange     DstChangePrint
+//	RespPrint     RespPrint
+//	Err           string
+//	NeedsRetry    bool
+//	Retry         RetryPrint
+//} // db logging helper
 
 type RobotsPrint struct {
 	URL         string

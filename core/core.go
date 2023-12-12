@@ -94,8 +94,8 @@ func CORE() {
 
 	// Make workers
 	var workerList []wk.GeneralWorker
-	allResults := make(chan cm.Task, 500000) // all workers write to this
-	for i, _ := range workerTaskStrList {    // see generalworker.go for details
+	allResults := make(chan cm.TaskPrint, 500000) // all workers write to this
+	for i, _ := range workerTaskStrList {         // see generalworker.go for details
 		workerTasksHeap := &cm.HeapSlice{}
 		heap.Init(workerTasksHeap)
 		worker := wk.GeneralWorker{

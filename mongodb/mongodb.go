@@ -58,7 +58,7 @@ func (db *DBConn) NewCollection(name string) {
 	if len(name) > 4 && name[:4] == "test" { // Provides extra sanity for testing
 		timeString = ""
 	}
-	err := db.Database.CreateCollection(db.Ctx, cm.GlobalConfig.DBCollection+timeString)
+	err := db.Database.CreateCollection(db.Ctx, name+timeString)
 	if err != nil {
 		log.Fatal(err)
 	}

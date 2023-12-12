@@ -2,6 +2,7 @@ package common
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/rand"
 	"crypto/sha1"
 	"encoding/binary"
@@ -87,18 +88,23 @@ func ReadTaskStrsFromInput(filename string) ([]string, error) {
 //	This function only return [][][]string, caller (main) is responsible for creating workers
 func GroupTasks(taskStrs []string) [][][]string {
 	//	1. Maintain a hostname map (hostname -> list of taskStrs)
-	domainMap := make(map[string]map[string]struct{}, 0)
+	domainMap := make(map[string]map[string][]string, 0)
 	for _, taskStr := range taskStrs {
 		line := strings.TrimSpace(taskStr)
 		strL := strings.Split(line, ",")
 		URL := strings.TrimSpace(strL[0])
+		source := ""
+		if len(strL) > 1 {
+			source = strings.TrimSpace(strL[1])
+		}
 		parsedURL, _ := url.Parse(URL) // no err should occur here (filtered by prev func)
 		if _, ok := domainMap[parsedURL.Hostname()]; !ok {
-			domainMap[parsedURL.Hostname()] = make(map[string]struct{}, 0)
+			domainMap[parsedURL.Hostname()] = make(map[string][]string, 0)
 		}
-		if _, ok := domainMap[parsedURL.Hostname()][taskStr]; !ok { // deduplicate
-			domainMap[parsedURL.Hostname()][taskStr] = struct{}{}
+		if _, ok := domainMap[parsedURL.Hostname()][URL]; !ok {
+			domainMap[parsedURL.Hostname()][URL] = make([]string, 0)
 		}
+		domainMap[parsedURL.Hostname()][URL] = append(domainMap[parsedURL.Hostname()][URL], source)
 	}
 	//	2. Group hostnames together, all workers can handle >= 1 hostnames, but at most N tasks
 	var subGroups [][][]string
@@ -113,8 +119,8 @@ func GroupTasks(taskStrs []string) [][][]string {
 		}
 		taskStrL := make([]string, len(taskStrM))
 		idx := 0
-		for k, _ := range taskStrM {
-			taskStrL[idx] = k
+		for k, v := range taskStrM {
+			taskStrL[idx] = k + "," + strings.Join(v, " ")
 			idx++
 		} // convert from map to string, use map for prev dedup
 		tempGroups = append(tempGroups, taskStrL)
@@ -142,7 +148,13 @@ func computeETag(data []byte) string {
 // PrintResp is a helper for db logging, same as all other func PrintSomething
 //
 //	mongodb cannot dereference pointers, so all pointed values are dereferenced by this
-func PrintResp(resp http.Response) RespPrint {
+func PrintResp(resp *http.Response) RespPrint {
+	defer resp.Body.Close()
+
+	if resp == nil {
+		return RespPrint{}
+	}
+
 	storableResp := RespPrint{
 		StatusCode: resp.StatusCode,
 		Header:     resp.Header,
@@ -151,30 +163,65 @@ func PrintResp(resp http.Response) RespPrint {
 	if eTag, ok := resp.Header["Etag"]; ok {
 		storableResp.ETag = strings.Trim(eTag[0], "\"")
 	}
-	buf := make([]byte, GlobalConfig.ESelfTagBuffLen)
-	// resp.Body is copied and stored for this step, so http.Response can be closed before this
-	n, err := io.ReadAtLeast(resp.Body, buf, GlobalConfig.ESelfTagBuffLen) // n = min(len, N)
-	if err != nil && err != io.ErrUnexpectedEOF {
-		//	TODO: DO SOMETHING
+
+	var dynamicBuf bytes.Buffer
+	chunkSize := 32 * 1024
+	for {
+		chunkBuf := make([]byte, chunkSize)
+
+		n, err := io.ReadAtLeast(resp.Body, chunkBuf, chunkSize)
+		if err != nil {
+			if err == io.EOF || err == io.ErrUnexpectedEOF {
+				dynamicBuf.Write(chunkBuf[:n]) // Write the last partial chunk
+				break
+			}
+			fmt.Println("PrintResp err io.Reader")
+			break
+		}
+
+		dynamicBuf.Write(chunkBuf[:n])
+
+		if dynamicBuf.Len() >= GlobalConfig.ESelfTagBuffLen {
+			break
+		}
 	}
-	storableResp.ESelfTag = computeETag(buf[:n])
+
+	storableResp.ESelfTag = computeETag(dynamicBuf.Bytes())
+	storableResp.Size = dynamicBuf.Len()
 
 	return storableResp
 }
 
-func PrintDstChange(ori string, dst string) DstChangePrint {
-	dstL := strings.Split(dst, " ")
-	dstURL := dstL[len(dstL)-1]
-	dstParsed, err := url.Parse(dstURL)
-	if err != nil {
-		fmt.Println("do something") //TODO: fix this
+func PrintErr(err error) string {
+	if err == nil {
+		return ""
+	} else {
+		return err.Error()
+	}
+}
+
+func PrintDstChange(ori string, redirectChain []string) DstChangePrint {
+	var dstURL string
+	if len(redirectChain) > 0 {
+		dst := redirectChain[len(redirectChain)-1]
+		dstL := strings.Split(dst, " ")
+		dstURL = dstL[len(dstL)-1]
+	} else {
 		return DstChangePrint{
 			Scheme: false, Hostname: false, Path: false, Query: false,
 		}
 	}
+
 	oriParsed, err := url.Parse(ori)
 	if err != nil {
-		fmt.Println("do something") //TODO: fix this
+		fmt.Printf("parsing ori url %s\n", ori) //TODO: fix this
+		return DstChangePrint{
+			Scheme: false, Hostname: false, Path: false, Query: false,
+		}
+	}
+	dstParsed, err := url.Parse(dstURL)
+	if err != nil {
+		fmt.Printf("parsing dst url %s\n", dstURL) //TODO: fix this
 		return DstChangePrint{
 			Scheme: false, Hostname: false, Path: false, Query: false,
 		}
@@ -189,41 +236,6 @@ func PrintDstChange(ori string, dst string) DstChangePrint {
 	return dstChangePrint
 }
 
-func PrintTask(task Task) TaskPrint {
-	taskPrint := TaskPrint{
-		SourceURL: task.Source,
-		Domain:    task.Hostname,
-		URL:       task.URL,
-		IP:        task.IP,
-	}
-
-	taskPrint.RedirectChain = task.RedirectChain
-	if len(taskPrint.RedirectChain) != 0 { // src -> dst change summary
-		dst := taskPrint.RedirectChain[len(taskPrint.RedirectChain)-1]
-		taskPrint.DstChange = PrintDstChange(taskPrint.URL, dst)
-	}
-	if task.Resp != nil {
-		taskPrint.Resp = PrintResp(*task.Resp)
-	}
-	if task.Err != nil {
-		taskPrint.Err = task.Err.Error()
-	}
-
-	// dereference the entire retry struct pointed by taskPrint.Retry
-	if task.Retry != nil && task.Retry.Retried {
-		taskPrint.Retry.Retried = task.Retry.Retried
-		taskPrint.Retry.RedirectChain = task.Retry.RedirectChain
-		if len(taskPrint.Retry.RedirectChain) != 0 { // src -> dst change summary
-			dst := taskPrint.Retry.RedirectChain[len(taskPrint.Retry.RedirectChain)-1]
-			dst = strings.Split(dst, "")[len(strings.Split(dst, ""))-1]
-			taskPrint.Retry.DstChange = PrintDstChange(taskPrint.URL, dst)
-		}
-		if task.Retry.Resp != nil {
-			taskPrint.Retry.Resp = PrintResp(*task.Retry.Resp)
-		}
-		if task.Retry.Err != nil {
-			taskPrint.Retry.Err = (*task.Retry).Err.Error()
-		}
-	}
-	return taskPrint
-}
+//func PrintTask(task TaskPrint) TaskPrint {
+//	return task
+//}

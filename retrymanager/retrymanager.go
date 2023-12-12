@@ -12,7 +12,7 @@ import (
 )
 
 type RetryManager struct {
-	AllResults    *chan cm.Task
+	AllResults    *chan cm.TaskPrint
 	TaskPrintsRef *chan cm.TaskPrint
 	RetryBuff     []string
 	dbConnPrev    db.DBConn
@@ -21,7 +21,7 @@ type RetryManager struct {
 
 type RetryManagerInterface interface {
 	Start()
-	HandleRetry(task cm.Task)
+	HandleRetry(task cm.TaskPrint)
 }
 
 // NeedsRetry tells if a task needs retry by comparing to previous scan results
@@ -110,7 +110,7 @@ func (rm *RetryManager) Start() {
 			var wg sync.WaitGroup
 			wg.Add(len(rm.RetryBuff))
 
-			allRetryResults := make(chan cm.Task, len(rm.RetryBuff))
+			allRetryResults := make(chan cm.TaskPrint, len(rm.RetryBuff))
 			politeness := time.Duration( // use float64 -> inf to get around div by 0 exception
 				float64(cm.GlobalConfig.RetryPoliteness) / float64(len(rm.RetryBuff)))
 			worker := wk.GeneralWorker{
@@ -130,7 +130,7 @@ func (rm *RetryManager) Start() {
 
 			go func() {
 				for retryResult := range allRetryResults {
-					*rm.TaskPrintsRef <- cm.PrintTask(retryResult)
+					*rm.TaskPrintsRef <- retryResult
 					wg.Done()
 				}
 			}()
@@ -141,14 +141,13 @@ func (rm *RetryManager) Start() {
 	}()
 
 	for result := range *rm.AllResults {
-		resultPrint := cm.PrintTask(result)
-		if rm.NeedsRetry(resultPrint) { // append to buff if task needs retry
+		if rm.NeedsRetry(result) { // append to buff if task needs retry
 			rm.mutex.Lock()
 			rm.RetryBuff = append(rm.RetryBuff, result.URL)
 			rm.mutex.Unlock()
-			resultPrint.NeedsRetry = true
+			result.NeedsRetry = true
 		}
 
-		*rm.TaskPrintsRef <- resultPrint
+		*rm.TaskPrintsRef <- result
 	}
 }

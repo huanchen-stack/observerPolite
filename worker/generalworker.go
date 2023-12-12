@@ -19,51 +19,42 @@ import (
 )
 
 type GeneralWorker struct {
-	WorkerTasksHeap cm.HeapSlice  // for first try
-	WorkerTasksStrs chan string   // for retry
-	AllResultsRef   *chan cm.Task // those tasks can be copied into channels
+	WorkerTasksHeap cm.HeapSlice       // for first try
+	WorkerTasksStrs chan string        // for retry
+	AllResultsRef   *chan cm.TaskPrint // those tasks can be copied into channels
 	RBConn          *db.RobotsDBConn
 	bypassRobots    bool
 }
 
 type GeneralWorkerInterface interface {
 	Start()
-	HandleTask(task cm.Task)
-}
-
-type SafeConn struct {
-	Conn   net.Conn
-	isOpen bool
-}
-
-func (sc *SafeConn) Close() error {
-	if sc.isOpen {
-		sc.isOpen = false
-		return sc.Conn.Close()
-	}
-	return nil
+	HandleTask(task cm.TaskPrint)
 }
 
 // ErrorLog writes to either task.err section or task.retry.err section, depending on if this is a retry
 //
 //	same as RespLog
-func (gw *GeneralWorker) ErrorLog(task *cm.Task, err *error) {
-	if (*task).Retry == nil {
-		(*task).Err = *err
-	} else if (*task).Retry != nil && (*task).Retry.Retried {
-		(*task).Retry.Err = *err
+func (gw *GeneralWorker) ErrorLog(task *cm.TaskPrint, err error) {
+	if task.Retry.Retried {
+		task.Retry.Err = cm.PrintErr(err)
 	} else {
-		panic("error log is not working properly")
+		task.Err = cm.PrintErr(err)
 	}
 }
 
-func (gw *GeneralWorker) RespLog(task *cm.Task, resp *http.Response) {
-	if (*task).Retry == nil {
-		(*task).Resp = resp
-	} else if (*task).Retry != nil && (*task).Retry.Retried {
-		(*task).Retry.Resp = resp
+func (gw *GeneralWorker) RespLog(task *cm.TaskPrint, resp *http.Response) {
+	if task.Retry.Retried {
+		task.Retry.Resp = cm.PrintResp(resp)
 	} else {
-		panic("resp log is not working properly")
+		task.Resp = cm.PrintResp(resp)
+	}
+}
+
+func (gw *GeneralWorker) DstChangeLog(task *cm.TaskPrint) {
+	if task.Retry.Retried {
+		task.Retry.DstChange = cm.PrintDstChange(task.URL, task.Retry.RedirectChain)
+	} else {
+		task.DstChange = cm.PrintDstChange(task.URL, task.RedirectChain)
 	}
 }
 
@@ -224,6 +215,7 @@ func MakeClient(parsedURL *url.URL, redirectChain *[]string, taskIP *string) (*h
 			)
 			return nil
 		},
+		Jar: nil,
 	}
 
 	return client, nil
@@ -245,7 +237,7 @@ func MakeRequest(parsedURL *url.URL) (*http.Request, error) {
 //	(url sanity) -> check robotstxt cache/DB -> make client
 //	IF NEEDED -> (make robots request -> client.Do<req> -> robots db logging -> make new client ) ->
 //	-> make task request -> client.Do<req> -> resp/err logging
-func (gw *GeneralWorker) HandleTask(task cm.Task, wg *sync.WaitGroup) {
+func (gw *GeneralWorker) HandleTask(task cm.TaskPrint, wg *sync.WaitGroup) {
 	var client *http.Client
 	var req *http.Request
 	var resp *http.Response
@@ -253,7 +245,7 @@ func (gw *GeneralWorker) HandleTask(task cm.Task, wg *sync.WaitGroup) {
 
 	defer func() {
 		gw.RespLog(&task, resp)
-		gw.ErrorLog(&task, &err)
+		gw.ErrorLog(&task, err)
 		*gw.AllResultsRef <- task
 		(*wg).Done()
 	}()
@@ -279,7 +271,7 @@ func (gw *GeneralWorker) HandleTask(task cm.Task, wg *sync.WaitGroup) {
 	}
 
 	var redirectChain *[]string
-	if task.Retry == nil {
+	if task.NeedsRetry == false {
 		redirectChain = &task.RedirectChain
 	} else {
 		redirectChain = &task.Retry.RedirectChain
@@ -327,7 +319,7 @@ func (gw *GeneralWorker) HandleTask(task cm.Task, wg *sync.WaitGroup) {
 		}
 		if !robotsGroup.Test(parsedURL.Path) {
 			err = fmt.Errorf("path %s not allowd for http", parsedURL.Path)
-			gw.ErrorLog(&task, &err)
+			gw.ErrorLog(&task, err)
 			return
 		}
 
@@ -342,7 +334,7 @@ func (gw *GeneralWorker) HandleTask(task cm.Task, wg *sync.WaitGroup) {
 		*redirectChain = (*redirectChain)[:0]
 		client, err = MakeClient(parsedURL, redirectChain, &task.IP)
 		if err != nil {
-			gw.ErrorLog(&task, &err)
+			gw.ErrorLog(&task, err)
 			return
 		}
 	}
@@ -354,8 +346,6 @@ func (gw *GeneralWorker) HandleTask(task cm.Task, wg *sync.WaitGroup) {
 		err = fmt.Errorf("HTTPS request error: %w", err)
 		return
 	}
-
-	defer resp.Body.Close()
 }
 
 // FetchTask is essentially a spread out K-sort.
@@ -364,7 +354,7 @@ func (gw *GeneralWorker) HandleTask(task cm.Task, wg *sync.WaitGroup) {
 //		each LIST has a scheduled start time (scan timestamp) and a politeness (scan duration)
 //	POP: find the LIST with the closest start time, pop a task, increment (next) start time by politeness
 //	FetchTask create tasks from taskStrs, this is to save heap memory.
-func (gw *GeneralWorker) FetchTask() (cm.Task, time.Duration) {
+func (gw *GeneralWorker) FetchTask() (cm.TaskPrint, time.Duration) {
 	taskStrsByHostname := heap.Pop(&gw.WorkerTasksHeap).(cm.TaskStrsByHostname)
 
 	taskStr := <-taskStrsByHostname.TaskStrs
@@ -374,7 +364,7 @@ func (gw *GeneralWorker) FetchTask() (cm.Task, time.Duration) {
 	src := strings.TrimSpace(strL[1])
 	parsedURL, _ := url.Parse(URL)
 	taskSchedule := taskStrsByHostname.Schedule
-	task := cm.Task{
+	task := cm.TaskPrint{
 		Source:   src,
 		Hostname: parsedURL.Hostname(),
 		URL:      URL,
@@ -414,12 +404,11 @@ func (gw *GeneralWorker) StartRetry(politeness time.Duration) {
 	var wg sync.WaitGroup
 
 	for urlStr := range gw.WorkerTasksStrs {
-		go gw.HandleTask(cm.Task{
+		tmpTask := &cm.TaskPrint{
 			URL: urlStr,
-			Retry: &cm.RetryHTTP{
-				Retried: true,
-			},
-		}, &wg)
+		}
+		tmpTask.Retry.Retried = true
+		go gw.HandleTask(*tmpTask, &wg)
 		wg.Add(1)
 		time.Sleep(politeness)
 		//fmt.Printf("Time: %.2f | Initiating task %s (scheduled: %.2f)\n",

@@ -16,10 +16,10 @@ var GlobalConfig = Config{
 	DBlogging:       true,              // write to database or print only
 	DBURI:           "mongodb+srv://admin:admin@observerdb.borsr21.mongodb.net/?retryWrites=true&w=majority",
 	//DBURI:              "mongodb://localhost:27017",    // use local mongodb on fable.eecs.umich.edu
-	DBWriteFrequency:   10 * time.Second, // write scan results to DB in batches
-	DBCollection:       "CompTest2_",     // new db collection name
-	DBCollectionComp:   "CompTest1_",     // prev db collection name (for comparison -> retry)
-	ESelfTagBuffLen:    10240,            // buff size for self Etag compute
+	DBWriteFrequency:   5 * time.Second,  // write scan results to DB in batches
+	DBCollection:       "T",              // new db collection name
+	DBCollectionComp:   "test_E2E_comp1", // prev db collection name (for comparison -> retry)
+	ESelfTagBuffLen:    4096000,          // buff size for self Etag compute
 	RetryPoliteness:    10 * time.Second, // retry frequency
 	PProfDumpFrequency: 5 * time.Second,  // profiler (heap/goroutine) dump frequency (for debug)
 
