@@ -22,7 +22,10 @@ type RobotsDBConn struct {
 	CacheMap    map[string]*robotstxt.Group // not an actual cache, just naturally here because db logging is in batches
 	RespBodyMap map[string]string
 	CacheSize   int
-	mutex       sync.RWMutex
+	mutexCache  sync.RWMutex
+
+	ReadBatch  []DBRequest
+	MutexBatch sync.Mutex
 }
 
 type RobotsDBConnInterface interface {
@@ -121,6 +124,8 @@ func (rb *RobotsDBConn) Connect() {
 	} else {
 		fmt.Println("Index on 'url' field already exists")
 	}
+
+	go rb.BatchProcessor()
 }
 
 // FetchOne fetched robotsPrint from db and extract robotstxt.Group when possible.
@@ -155,6 +160,92 @@ func (rb *RobotsDBConn) FetchOne(url_ string) *robotstxt.Group {
 	}
 }
 
+func (rb *RobotsDBConn) BulkRead(key string, vals []string) []cm.RobotsPrint {
+	filter := bson.M{key: bson.M{"$in": vals}}
+	cursor, err := rb.Collection.Find(rb.Ctx, filter)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return make([]cm.RobotsPrint, 0)
+		} else {
+			fmt.Println("DB Bulk Read Err") // TODO: fix this
+			return make([]cm.RobotsPrint, 0)
+		}
+	}
+	defer cursor.Close(rb.Ctx)
+
+	var results []cm.RobotsPrint
+	if err := cursor.All(rb.Ctx, &results); err != nil {
+		fmt.Println("RB Bulk Read Decode Err")
+	}
+
+	return results
+}
+
+func (rb *RobotsDBConn) BatchProcessor() {
+	ticker := time.NewTicker(cm.GlobalConfig.DBWriteFrequency)
+
+	for range ticker.C {
+		fmt.Println("len rb readbatch: ", len(rb.ReadBatch))
+		rb.MutexBatch.Lock()
+		currentBatch := make([]string, len(rb.ReadBatch))
+		//currentBatchStatusMap := make(map[string]bool, 0)
+		currentBatchChanMap := make(map[string]chan interface{}, 0)
+		for i, _ := range rb.ReadBatch {
+			currentBatch[i] = rb.ReadBatch[i].Value
+			currentBatchChanMap[rb.ReadBatch[i].Value] = rb.ReadBatch[i].ResultChan
+		}
+		if len(currentBatchChanMap) != len(currentBatch) {
+			panic("duplicate url input!!!")
+		}
+		rb.ReadBatch = rb.ReadBatch[:0]
+		rb.MutexBatch.Unlock()
+
+		if len(currentBatch) == 0 {
+			continue
+		}
+		results := rb.BulkRead("url", currentBatch)
+
+		for i, result := range results {
+			currentBatchChanMap[result.URL] <- results[i]
+			delete(currentBatchChanMap, result.URL)
+		}
+		for _, v := range currentBatchChanMap {
+			v <- cm.RobotsPrint{}
+		}
+	}
+}
+
+func (rb *RobotsDBConn) FetchOneAsyncFixedInterval(key string, val string) *robotstxt.Group {
+	resultFuture := GetOneAsync(key, val, &rb.ReadBatch, &rb.MutexBatch)
+	//time.Sleep(10 * time.Second)
+	start := time.Now()
+	result := resultFuture.Await()
+	time.Sleep(cm.GlobalConfig.DBWriteFrequency - (time.Since(start)))
+
+	robotsPrint, ok := result.(cm.RobotsPrint)
+	if !ok {
+		fmt.Println("rb FetchOneAsyncRandInterval type cast error")
+	}
+
+	if robotsPrint.URL == "" { // not found in db
+		return nil
+	}
+
+	if robotsPrint.Expiration.After(time.Now()) {
+		robotsData, fromStrErr := robotstxt.FromString(robotsPrint.RespBodyStr)
+		if fromStrErr != nil {
+			return &robotstxt.Group{} // TODO: decide on this
+		}
+		return robotsData.FindGroup("*")
+	} else {
+		_, err := rb.Collection.DeleteOne(rb.Ctx, bson.M{key: val})
+		if err != nil {
+			log.Fatal(err)
+		}
+		return nil
+	}
+}
+
 func (rb *RobotsDBConn) BulkWrite(buff []cm.RobotsPrint) {
 	var writes []mongo.WriteModel
 	for i, _ := range buff {
@@ -180,25 +271,25 @@ func (rb *RobotsDBConn) Get(scheme string, hostname string) *robotstxt.Group {
 		Path:   "/robots.txt",
 	}
 
-	rb.mutex.Lock()
+	rb.mutexCache.Lock()
 	if group, ok := rb.CacheMap[parsedURL.String()]; ok {
 		//fmt.Println("robot cache HIT")
 		if rb.ExpireMap[parsedURL.String()].After(time.Now()) {
-			rb.mutex.Unlock()
+			rb.mutexCache.Unlock()
 			return group
 		} else {
 			//fmt.Println("robot cache HIT but EXPIRED")
 			delete(rb.ExpireMap, parsedURL.String()) // can't write to db since this already expired
 			delete(rb.CacheMap, parsedURL.String())
 			delete(rb.RespBodyMap, parsedURL.String())
-			rb.mutex.Unlock()
+			rb.mutexCache.Unlock()
 			return nil
 		}
 	}
-	rb.mutex.Unlock()
+	rb.mutexCache.Unlock()
 
 	//fmt.Println("robot cache MISS, checking in db...")
-	return rb.FetchOne(parsedURL.String())
+	return rb.FetchOneAsyncFixedInterval("url", parsedURL.String())
 }
 
 func (rb *RobotsDBConn) Add(scheme string, hostname string, expiration time.Time, group *robotstxt.Group, respBodyStr string) {
@@ -208,7 +299,7 @@ func (rb *RobotsDBConn) Add(scheme string, hostname string, expiration time.Time
 		Path:   "/robots.txt",
 	}
 
-	rb.mutex.Lock()
+	rb.mutexCache.Lock()
 	rb.ExpireMap[parsedURL.String()] = expiration
 	rb.CacheMap[parsedURL.String()] = group
 	rb.RespBodyMap[parsedURL.String()] = respBodyStr
@@ -230,7 +321,7 @@ func (rb *RobotsDBConn) Add(scheme string, hostname string, expiration time.Time
 			delete(rb.RespBodyMap, url_)
 		}
 	}
-	rb.mutex.Unlock()
+	rb.mutexCache.Unlock()
 
 	if len(writeBuff) > 0 {
 		rb.BulkWrite(writeBuff)

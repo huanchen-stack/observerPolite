@@ -8,10 +8,10 @@ import (
 var GlobalConfig = Config{
 	Debugging:       true,
 	InputFileName:   "input.txt",
-	ExpectedRuntime: 5 * time.Second,   // expected total runtime
+	ExpectedRuntime: 1 * time.Second,   // expected total runtime
 	Timeout:         120 * time.Second, // see generalworker.go
 	WorkerStress:    5000,              // max number of tasks per worker
-	RobotsBuffSize:  5,                 // write robots to db in batches (also serve as "cache" before writing to db)
+	RobotsBuffSize:  3,                 // write robots to db in batches (also serve as "cache" before writing to db)
 	Retries:         3,                 // max number of retries when connection err
 	DBlogging:       true,              // write to database or print only
 	DBURI:           "mongodb+srv://admin:admin@observerdb.borsr21.mongodb.net/?retryWrites=true&w=majority",
@@ -20,8 +20,8 @@ var GlobalConfig = Config{
 	DBCollection:       "T",              // new db collection name
 	DBCollectionComp:   "test_E2E_comp1", // prev db collection name (for comparison -> retry)
 	ESelfTagBuffLen:    4096000,          // buff size for self Etag compute
-	RetryPoliteness:    10 * time.Second, // retry frequency
-	PProfDumpFrequency: 5 * time.Second,  // profiler (heap/goroutine) dump frequency (for debug)
+	RetryPoliteness:    1 * time.Second,  // retry frequency
+	PProfDumpFrequency: 60 * time.Second, // profiler (heap/goroutine) dump frequency (for debug)
 
 	//Heartbeat configurations are deprecated... neglect for now
 	HeartbeatEmailFrom: "sunhuanchen99@gmail.com",

@@ -34,7 +34,7 @@ func (rm *RetryManager) NeedsRetry(taskPrint cm.TaskPrint) bool {
 		return false
 	}
 
-	prevResult := rm.dbConnPrev.GetOne("url", taskPrint.URL) // GetOne (customized) always returns struct
+	prevResult := rm.dbConnPrev.GetOneAsync("url", taskPrint.URL) // GetOne (customized) always returns struct
 	if prevResult.URL == "" {
 		return false
 	}
@@ -95,10 +95,14 @@ func (rm *RetryManager) NeedsRetry(taskPrint cm.TaskPrint) bool {
 func (rm *RetryManager) Start() {
 	// Connect to prev DB collection (start another connection to DB)
 	// DB for comp (create index when doesn't exist)
-	rm.dbConnPrev = db.DBConn{Ctx: context.Background()}
+	rm.dbConnPrev = db.DBConn{
+		Ctx:       context.Background(),
+		ReadBatch: make([]db.DBRequest, 0),
+	}
 	rm.dbConnPrev.Connect()
 	rm.dbConnPrev.Collection = rm.dbConnPrev.Database.Collection(cm.GlobalConfig.DBCollectionComp) //comp collection
 	rm.dbConnPrev.CreateIndex("url")
+	go rm.dbConnPrev.BatchProcessor()
 
 	go func() {
 		ticker := time.NewTicker(cm.GlobalConfig.RetryPoliteness)
@@ -141,13 +145,28 @@ func (rm *RetryManager) Start() {
 	}()
 
 	for result := range *rm.AllResults {
-		if rm.NeedsRetry(result) { // append to buff if task needs retry
-			rm.mutex.Lock()
-			rm.RetryBuff = append(rm.RetryBuff, result.URL)
-			rm.mutex.Unlock()
-			result.NeedsRetry = true
-		}
+		go func(localResult cm.TaskPrint) { // send db requests from multiple routines
+			if rm.NeedsRetry(localResult) { // append to buff if task needs retry
+				rm.mutex.Lock()
+				rm.RetryBuff = append(rm.RetryBuff, localResult.URL)
+				rm.mutex.Unlock()
+				localResult.NeedsRetry = true
+			}
 
-		*rm.TaskPrintsRef <- result
+			*rm.TaskPrintsRef <- localResult
+		}(result)
 	}
+
+	//for result := range *rm.AllResults {
+	//
+	//	if rm.NeedsRetry(result) { // append to buff if task needs retry
+	//		rm.mutex.Lock()
+	//		rm.RetryBuff = append(rm.RetryBuff, result.URL)
+	//		rm.mutex.Unlock()
+	//		result.NeedsRetry = true
+	//	}
+	//
+	//	*rm.TaskPrintsRef <- result
+	//
+	//}
 }

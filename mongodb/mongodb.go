@@ -13,13 +13,12 @@ import (
 )
 
 type DBConn struct {
-	Ctx         context.Context
-	Client      *mongo.Client
-	Database    *mongo.Database
-	Collection  *mongo.Collection
-	readBatch   []DBRequest
-	mutex       sync.Mutex
-	readTrigger bool
+	Ctx        context.Context
+	Client     *mongo.Client
+	Database   *mongo.Database
+	Collection *mongo.Collection
+	ReadBatch  []DBRequest
+	Mutex      sync.Mutex
 }
 
 type DBConnInterface interface {
@@ -188,28 +187,29 @@ func (db *DBConn) BatchProcessor() {
 	ticker := time.NewTicker(cm.GlobalConfig.DBWriteFrequency)
 
 	for range ticker.C {
-		db.mutex.Lock()
-		currentBatch := make([]string, len(db.readBatch))
+		fmt.Println("len db readbatch: ", len(db.ReadBatch))
+		db.Mutex.Lock()
+		currentBatch := make([]string, len(db.ReadBatch))
 		//currentBatchStatusMap := make(map[string]bool, 0)
 		currentBatchChanMap := make(map[string]chan interface{}, 0)
-		for i, _ := range db.readBatch {
-			currentBatch[i] = db.readBatch[i].Value
-			currentBatchChanMap[db.readBatch[i].Value] = db.readBatch[i].Result
+		for i, _ := range db.ReadBatch {
+			currentBatch[i] = db.ReadBatch[i].Value
+			currentBatchChanMap[db.ReadBatch[i].Value] = db.ReadBatch[i].ResultChan
 		}
 		if len(currentBatchChanMap) != len(currentBatch) {
 			panic("duplicate url input!!!")
 		}
-		db.readBatch = db.readBatch[:0]
-		db.mutex.Unlock()
+		db.ReadBatch = db.ReadBatch[:0]
+		db.Mutex.Unlock()
 
 		if len(currentBatch) == 0 {
 			continue
 		}
 		results := db.BulkRead("url", currentBatch)
 
-		for i, result := range results {
-			currentBatchChanMap[result.URL] <- results[i]
-			delete(currentBatchChanMap, result.URL)
+		for i, _ := range results {
+			currentBatchChanMap[results[i].URL] <- results[i]
+			delete(currentBatchChanMap, results[i].URL)
 		}
 		for _, v := range currentBatchChanMap {
 			v <- cm.TaskPrint{}
@@ -218,7 +218,9 @@ func (db *DBConn) BatchProcessor() {
 }
 
 func (db *DBConn) GetOneAsync(key string, val string) cm.TaskPrint {
-	result := GetOneAsync(key, val, db.readBatch, &db.mutex).Await()
+	resultFuture := GetOneAsync(key, val, &db.ReadBatch, &db.Mutex)
+	//time.Sleep(10 * time.Second)
+	result := resultFuture.Await()
 	typedResult, ok := result.(cm.TaskPrint)
 	if !ok {
 		fmt.Println("db GetOneAsync type cast error")

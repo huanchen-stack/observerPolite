@@ -126,7 +126,7 @@ func CORE() {
 
 	// Update excluded lists from workers
 	go func() {
-		ticker := time.NewTicker(4 * time.Second)
+		ticker := time.NewTicker(600 * time.Second)
 		for range ticker.C {
 			cm.ExcludedList = cm.ReadExcludedHostnames()
 		}

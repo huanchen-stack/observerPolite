@@ -1,6 +1,8 @@
 package mongodb
 
-import "sync"
+import (
+	"sync"
+)
 
 type FutureResult struct {
 	resultChan chan interface{}
@@ -12,18 +14,18 @@ func (f *FutureResult) Await() interface{} {
 }
 
 type DBRequest struct {
-	Key    string
-	Value  string
-	Result chan interface{}
+	Key        string
+	Value      string
+	ResultChan chan interface{}
 }
 
-func GetOneAsync(key string, val string, readBatch []DBRequest, mutex *sync.Mutex) *FutureResult {
+func GetOneAsync(key string, val string, readBatch *[]DBRequest, mutex *sync.Mutex) *FutureResult {
 	resultChan := make(chan interface{}, 1)
 
 	mutex.Lock()
-	readBatch = append(readBatch, DBRequest{
+	*readBatch = append(*readBatch, DBRequest{
 		Key: key, Value: val,
-		Result: resultChan,
+		ResultChan: resultChan,
 	})
 	mutex.Unlock()
 
