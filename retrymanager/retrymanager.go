@@ -30,7 +30,7 @@ type RetryManagerInterface interface {
 //	Use the latest scan result (except for "429 too many requests"), i.e., if prev scan used a retry, use that retry result!
 func (rm *RetryManager) NeedsRetry(taskPrint cm.TaskPrint) bool {
 	// if this try is blocked by robots.txt, don't retry
-	if len(taskPrint.Err) >= 4 && taskPrint.Err[0:4] == "path" {
+	if len(taskPrint.Err) >= 4 && (taskPrint.Err[0:4] == "path" || taskPrint.Err[0:4] == "Excl") {
 		return false
 	}
 
@@ -95,7 +95,7 @@ func (rm *RetryManager) NeedsRetry(taskPrint cm.TaskPrint) bool {
 func (rm *RetryManager) Start() {
 	// Connect to prev DB collection (start another connection to DB)
 	// DB for comp (create index when doesn't exist)
-	rm.dbConnPrev = db.DBConn{context.Background(), nil, nil, nil}
+	rm.dbConnPrev = db.DBConn{Ctx: context.Background()}
 	rm.dbConnPrev.Connect()
 	rm.dbConnPrev.Collection = rm.dbConnPrev.Database.Collection(cm.GlobalConfig.DBCollectionComp) //comp collection
 	rm.dbConnPrev.CreateIndex("url")

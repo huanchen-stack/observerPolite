@@ -250,8 +250,14 @@ func (gw *GeneralWorker) HandleTask(task cm.TaskPrint, wg *sync.WaitGroup) {
 		(*wg).Done()
 	}()
 
-	// scheme sanity check
+	// excluded hostnames
 	parsedURL, _ := url.Parse(task.URL)
+	if _, ok := cm.ExcludedList[parsedURL.Hostname()]; ok {
+		err = fmt.Errorf("Excluded Hostname!")
+		return
+	}
+
+	// scheme sanity check
 	if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
 		err = fmt.Errorf("WRONG Scheme! (not http or https)")
 		return
@@ -271,7 +277,7 @@ func (gw *GeneralWorker) HandleTask(task cm.TaskPrint, wg *sync.WaitGroup) {
 	}
 
 	var redirectChain *[]string
-	if task.NeedsRetry == false {
+	if task.Retry.Retried == false {
 		redirectChain = &task.RedirectChain
 	} else {
 		redirectChain = &task.Retry.RedirectChain

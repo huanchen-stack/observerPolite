@@ -8,14 +8,18 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"log"
 	cm "observerPolite/common"
+	"sync"
 	"time"
 )
 
 type DBConn struct {
-	Ctx        context.Context
-	Client     *mongo.Client
-	Database   *mongo.Database
-	Collection *mongo.Collection
+	Ctx         context.Context
+	Client      *mongo.Client
+	Database    *mongo.Database
+	Collection  *mongo.Collection
+	readBatch   []DBRequest
+	mutex       sync.Mutex
+	readTrigger bool
 }
 
 type DBConnInterface interface {
@@ -64,6 +68,27 @@ func (db *DBConn) NewCollection(name string) {
 	}
 	collection := db.Database.Collection(name + timeString)
 	db.Collection = collection
+}
+
+func (db *DBConn) BulkRead(key string, vals []string) []cm.TaskPrint {
+	filter := bson.M{key: bson.M{"$in": vals}}
+	cursor, err := db.Collection.Find(db.Ctx, filter)
+	if err != nil {
+		if err == mongo.ErrNoDocuments {
+			return make([]cm.TaskPrint, 0)
+		} else {
+			fmt.Println("DB Bulk Read Err") // TODO: fix this
+			return make([]cm.TaskPrint, 0)
+		}
+	}
+	defer cursor.Close(db.Ctx)
+
+	var results []cm.TaskPrint
+	if err := cursor.All(db.Ctx, &results); err != nil {
+		fmt.Println("DB Bulk Read Decode Err")
+	}
+
+	return results
 }
 
 func (db *DBConn) BulkWrite(dbDocs []cm.TaskPrint) (int, error) {
@@ -157,6 +182,48 @@ func (db *DBConn) GetOne(key string, val string) cm.TaskPrint {
 		}
 	}
 	return result
+}
+
+func (db *DBConn) BatchProcessor() {
+	ticker := time.NewTicker(cm.GlobalConfig.DBWriteFrequency)
+
+	for range ticker.C {
+		db.mutex.Lock()
+		currentBatch := make([]string, len(db.readBatch))
+		//currentBatchStatusMap := make(map[string]bool, 0)
+		currentBatchChanMap := make(map[string]chan interface{}, 0)
+		for i, _ := range db.readBatch {
+			currentBatch[i] = db.readBatch[i].Value
+			currentBatchChanMap[db.readBatch[i].Value] = db.readBatch[i].Result
+		}
+		if len(currentBatchChanMap) != len(currentBatch) {
+			panic("duplicate url input!!!")
+		}
+		db.readBatch = db.readBatch[:0]
+		db.mutex.Unlock()
+
+		if len(currentBatch) == 0 {
+			continue
+		}
+		results := db.BulkRead("url", currentBatch)
+
+		for i, result := range results {
+			currentBatchChanMap[result.URL] <- results[i]
+			delete(currentBatchChanMap, result.URL)
+		}
+		for _, v := range currentBatchChanMap {
+			v <- cm.TaskPrint{}
+		}
+	}
+}
+
+func (db *DBConn) GetOneAsync(key string, val string) cm.TaskPrint {
+	result := GetOneAsync(key, val, db.readBatch, &db.mutex).Await()
+	typedResult, ok := result.(cm.TaskPrint)
+	if !ok {
+		fmt.Println("db GetOneAsync type cast error")
+	}
+	return typedResult
 }
 
 func (db *DBConn) Disconnect() {

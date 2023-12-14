@@ -81,6 +81,7 @@ func CORE() {
 		CacheSize: cm.GlobalConfig.RobotsBuffSize,
 	}
 	rbConn.Connect()
+
 	// Read and parse from .txt
 	taskStrs, err := cm.ReadTaskStrsFromInput(cm.GlobalConfig.InputFileName)
 	if err != nil {
@@ -122,6 +123,14 @@ func CORE() {
 	// NOW IT'S SAFE TO DISCARD THE ORI COPY!
 	workerTaskStrList = nil
 	taskStrs = nil
+
+	// Update excluded lists from workers
+	go func() {
+		ticker := time.NewTicker(4 * time.Second)
+		for range ticker.C {
+			cm.ExcludedList = cm.ReadExcludedHostnames()
+		}
+	}()
 
 	// GO! WORKERS, GO!
 	for i, _ := range workerList {

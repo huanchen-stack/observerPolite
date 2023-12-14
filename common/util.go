@@ -18,7 +18,7 @@ import (
 // getExcludedHostnames reads all excluded domains ( judici.com )
 //
 //	refer to the email on Sept 27th
-func getExcludedHostnames() map[string]struct{} {
+func ReadExcludedHostnames() map[string]struct{} {
 	file, err := os.Open("excluded_domains.txt")
 	if err != nil {
 		panic("excluded_domains.txt doesn't exist!")
@@ -43,7 +43,7 @@ func getExcludedHostnames() map[string]struct{} {
 //	This function makes sure that all returned tasks strings are valid.
 //	Caller (main) is responsible for error handling
 func ReadTaskStrsFromInput(filename string) ([]string, error) {
-	excludedHostnames := getExcludedHostnames()
+	excludedHostnames := ReadExcludedHostnames()
 
 	file, err := os.Open(filename)
 	if err != nil {
@@ -149,11 +149,10 @@ func computeETag(data []byte) string {
 //
 //	mongodb cannot dereference pointers, so all pointed values are dereferenced by this
 func PrintResp(resp *http.Response) RespPrint {
-	defer resp.Body.Close()
-
 	if resp == nil {
 		return RespPrint{}
 	}
+	defer resp.Body.Close()
 
 	storableResp := RespPrint{
 		StatusCode: resp.StatusCode,

@@ -73,3 +73,5 @@ var DNSServers = []string{
 	// "94.140.14.14",
 	// "84.140.15.15",
 }
+
+var ExcludedList = map[string]struct{}{}
