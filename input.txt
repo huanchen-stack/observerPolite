@@ -1,14 +1,2 @@
-http://www.reddit.com
-http://www.microsoft.com, A
-https://www.microsoft.com
-http://google.com, C
-https://google.com
-http://www.google.com
-https://www.google.com, E
-http://www.reddit.com
-http://www.microsoft.com, B
-https://www.microsoft.com
-http://google.com, D
-https://google.com
-http://www.google.com
-https://www.google.com, F
+https://www.microsoft.com/en-us/microsoft-teams/group-chat-software
+https://www.microsoft.com/en-us/microsoft-teams/microsoft-teams-phone

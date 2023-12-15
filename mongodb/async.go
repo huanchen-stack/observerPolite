@@ -69,31 +69,40 @@ func BatchProcessor[T DBDoc](dbAccess DBAccess) {
 		mutex := dbAccess.GetBatchMutex()
 		var tmp T
 		fmt.Println(reflect.TypeOf(tmp), "len readbatch: ", len(*batch))
+
 		mutex.Lock()
-		currentBatch := make([]string, len(*batch))
-		//currentBatchStatusMap := make(map[string]bool, 0)
-		currentBatchChanMap := make(map[string]chan interface{}, 0)
+		currentBatchChanMap := make(map[string][]chan interface{}, 0) // concurrent robotstxt lookup to the same host
 		for i, _ := range *batch {
-			currentBatch[i] = (*batch)[i].Value
-			currentBatchChanMap[(*batch)[i].Value] = (*batch)[i].ResultChan
+			currentBatchChanMap[(*batch)[i].Value] = append(currentBatchChanMap[(*batch)[i].Value], (*batch)[i].ResultChan)
 		}
-		if len(currentBatchChanMap) != len(currentBatch) {
-			panic("duplicate url input!!!")
-		}
+		//if len(currentBatchChanMap) != len(currentBatch) {
+		//	panic("duplicate url input!!!")
+		//}
 		*batch = (*batch)[:0]
 		mutex.Unlock()
 
+		currentBatch := make([]string, len(currentBatchChanMap))
+		idx := 0
+		for k, _ := range currentBatchChanMap {
+			currentBatch[idx] = k
+			idx += 1
+		}
 		if len(currentBatch) == 0 {
 			continue
 		}
 		results := BulkRead[T](dbAccess, "url", currentBatch)
 
 		for i, _ := range results {
-			currentBatchChanMap[results[i].GetURL()] <- results[i]
+			for j, _ := range currentBatchChanMap[results[i].GetURL()] {
+				currentBatchChanMap[results[i].GetURL()][j] <- results[i]
+			}
 			delete(currentBatchChanMap, results[i].GetURL())
 		}
 		for _, v := range currentBatchChanMap {
-			v <- tmp
+			var tmp T
+			for i, _ := range v {
+				v[i] <- tmp
+			}
 		}
 	}
 }

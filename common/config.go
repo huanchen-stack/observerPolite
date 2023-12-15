@@ -8,12 +8,12 @@ import (
 var GlobalConfig = Config{
 	Debugging:       true,
 	InputFileName:   "input.txt",
-	ExpectedRuntime: 1 * time.Second,   // expected total runtime
-	Timeout:         120 * time.Second, // see generalworker.go
-	WorkerStress:    5000,              // max number of tasks per worker
-	RobotsBuffSize:  3,                 // write robots to db in batches (also serve as "cache" before writing to db)
-	Retries:         3,                 // max number of retries when connection err
-	DBlogging:       true,              // write to database or print only
+	ExpectedRuntime: 1 * time.Second,  // expected total runtime
+	Timeout:         10 * time.Second, // see generalworker.go
+	WorkerStress:    5000,             // max number of tasks per worker
+	RobotsBuffSize:  3,                // write robots to db in batches (also serve as "cache" before writing to db)
+	Retries:         3,                // max number of retries when connection err
+	DBlogging:       true,             // write to database or print only
 	DBURI:           "mongodb+srv://admin:admin@observerdb.borsr21.mongodb.net/?retryWrites=true&w=majority",
 	//DBURI:              "mongodb://localhost:27017",    // use local mongodb on fable.eecs.umich.edu
 	DBWriteFrequency:   5 * time.Second,  // write scan results to DB in batches
