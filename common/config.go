@@ -18,7 +18,7 @@ var GlobalConfig = Config{
 	//DBURI:              "mongodb://localhost:27017",    // use local mongodb on fable.eecs.umich.edu
 	DBWriteFrequency:   5 * time.Second,  // write scan results to DB in batches
 	DBCollection:       "T",              // new db collection name
-	DBCollectionComp:   "test_E2E_comp1", // prev db collection name (for comparison -> retry)
+	DBCollectionComp:   "EmptyScan",      // prev db collection name (for comparison -> retry)
 	ESelfTagBuffLen:    4096000,          // buff size for self Etag compute
 	RetryPoliteness:    1 * time.Second,  // retry frequency
 	PProfDumpFrequency: 60 * time.Second, // profiler (heap/goroutine) dump frequency (for debug)

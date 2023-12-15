@@ -102,7 +102,7 @@ func (rm *RetryManager) Start() {
 	rm.dbConnPrev.Connect()
 	rm.dbConnPrev.Collection = rm.dbConnPrev.Database.Collection(cm.GlobalConfig.DBCollectionComp) //comp collection
 	rm.dbConnPrev.CreateIndex("url")
-	go rm.dbConnPrev.BatchProcessor()
+	go db.BatchProcessor[cm.TaskPrint](&rm.dbConnPrev)
 
 	go func() {
 		ticker := time.NewTicker(cm.GlobalConfig.RetryPoliteness)

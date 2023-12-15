@@ -68,6 +68,8 @@ type TaskPrint struct {
 	Retry         RetryHTTPPrint
 } // stores scan results
 
+func (tp TaskPrint) GetURL() string { return tp.URL }
+
 //type RetryPrint struct {
 //	Retried       bool
 //	RedirectChain []string
@@ -94,3 +96,5 @@ type RobotsPrint struct {
 	Expiration  time.Time
 	RespBodyStr string // store the entire robots.txt
 } // db logging helper
+
+func (rp RobotsPrint) GetURL() string { return rp.URL }

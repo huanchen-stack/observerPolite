@@ -28,16 +28,10 @@ type RobotsDBConn struct {
 	MutexBatch sync.Mutex
 }
 
-type RobotsDBConnInterface interface {
-	Get(hostname string) *robotstxt.Group
-	Add(hostname string, expiration time.Time, group *robotstxt.Group) error
-
-	Connect()
-	FetchOne(hostname string) *robotstxt.Group
-	BulkWrite(buff []cm.RobotsPrint)
-	Disconnect()
-	Clean()
-}
+func (rb *RobotsDBConn) GetCtx() context.Context          { return rb.Ctx }
+func (rb *RobotsDBConn) GetCollection() *mongo.Collection { return rb.Collection }
+func (rb *RobotsDBConn) GetBatchRead() *[]DBRequest       { return &rb.ReadBatch }
+func (rb *RobotsDBConn) GetBatchMutex() *sync.Mutex       { return &rb.MutexBatch }
 
 // Connect is similar to mongodb::Connect, but additionally this func
 //
@@ -125,7 +119,7 @@ func (rb *RobotsDBConn) Connect() {
 		fmt.Println("Index on 'url' field already exists")
 	}
 
-	go rb.BatchProcessor()
+	go BatchProcessor[cm.RobotsPrint](rb)
 }
 
 // FetchOne fetched robotsPrint from db and extract robotstxt.Group when possible.
@@ -160,60 +154,60 @@ func (rb *RobotsDBConn) FetchOne(url_ string) *robotstxt.Group {
 	}
 }
 
-func (rb *RobotsDBConn) BulkRead(key string, vals []string) []cm.RobotsPrint {
-	filter := bson.M{key: bson.M{"$in": vals}}
-	cursor, err := rb.Collection.Find(rb.Ctx, filter)
-	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			return make([]cm.RobotsPrint, 0)
-		} else {
-			fmt.Println("DB Bulk Read Err") // TODO: fix this
-			return make([]cm.RobotsPrint, 0)
-		}
-	}
-	defer cursor.Close(rb.Ctx)
-
-	var results []cm.RobotsPrint
-	if err := cursor.All(rb.Ctx, &results); err != nil {
-		fmt.Println("RB Bulk Read Decode Err")
-	}
-
-	return results
-}
-
-func (rb *RobotsDBConn) BatchProcessor() {
-	ticker := time.NewTicker(cm.GlobalConfig.DBWriteFrequency)
-
-	for range ticker.C {
-		fmt.Println("len rb readbatch: ", len(rb.ReadBatch))
-		rb.MutexBatch.Lock()
-		currentBatch := make([]string, len(rb.ReadBatch))
-		//currentBatchStatusMap := make(map[string]bool, 0)
-		currentBatchChanMap := make(map[string]chan interface{}, 0)
-		for i, _ := range rb.ReadBatch {
-			currentBatch[i] = rb.ReadBatch[i].Value
-			currentBatchChanMap[rb.ReadBatch[i].Value] = rb.ReadBatch[i].ResultChan
-		}
-		if len(currentBatchChanMap) != len(currentBatch) {
-			panic("duplicate url input!!!")
-		}
-		rb.ReadBatch = rb.ReadBatch[:0]
-		rb.MutexBatch.Unlock()
-
-		if len(currentBatch) == 0 {
-			continue
-		}
-		results := rb.BulkRead("url", currentBatch)
-
-		for i, result := range results {
-			currentBatchChanMap[result.URL] <- results[i]
-			delete(currentBatchChanMap, result.URL)
-		}
-		for _, v := range currentBatchChanMap {
-			v <- cm.RobotsPrint{}
-		}
-	}
-}
+//func (rb *RobotsDBConn) BulkRead(key string, vals []string) []cm.RobotsPrint {
+//	filter := bson.M{key: bson.M{"$in": vals}}
+//	cursor, err := rb.Collection.Find(rb.Ctx, filter)
+//	if err != nil {
+//		if err == mongo.ErrNoDocuments {
+//			return make([]cm.RobotsPrint, 0)
+//		} else {
+//			fmt.Println("DB Bulk Read Err") // TODO: fix this
+//			return make([]cm.RobotsPrint, 0)
+//		}
+//	}
+//	defer cursor.Close(rb.Ctx)
+//
+//	var results []cm.RobotsPrint
+//	if err := cursor.All(rb.Ctx, &results); err != nil {
+//		fmt.Println("RB Bulk Read Decode Err")
+//	}
+//
+//	return results
+//}
+//
+//func (rb *RobotsDBConn) BatchProcessor() {
+//	ticker := time.NewTicker(cm.GlobalConfig.DBWriteFrequency)
+//
+//	for range ticker.C {
+//		fmt.Println("len rb readbatch: ", len(rb.ReadBatch))
+//		rb.MutexBatch.Lock()
+//		currentBatch := make([]string, len(rb.ReadBatch))
+//		//currentBatchStatusMap := make(map[string]bool, 0)
+//		currentBatchChanMap := make(map[string]chan interface{}, 0)
+//		for i, _ := range rb.ReadBatch {
+//			currentBatch[i] = rb.ReadBatch[i].Value
+//			currentBatchChanMap[rb.ReadBatch[i].Value] = rb.ReadBatch[i].ResultChan
+//		}
+//		if len(currentBatchChanMap) != len(currentBatch) {
+//			panic("duplicate url input!!!")
+//		}
+//		rb.ReadBatch = rb.ReadBatch[:0]
+//		rb.MutexBatch.Unlock()
+//
+//		if len(currentBatch) == 0 {
+//			continue
+//		}
+//		results := BulkRead[cm.RobotsPrint](rb, "url", currentBatch)
+//
+//		for i, result := range results {
+//			currentBatchChanMap[result.URL] <- results[i]
+//			delete(currentBatchChanMap, result.URL)
+//		}
+//		for _, v := range currentBatchChanMap {
+//			v <- cm.RobotsPrint{}
+//		}
+//	}
+//}
 
 func (rb *RobotsDBConn) FetchOneAsyncFixedInterval(key string, val string) *robotstxt.Group {
 	resultFuture := GetOneAsync(key, val, &rb.ReadBatch, &rb.MutexBatch)
