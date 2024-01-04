@@ -67,34 +67,37 @@ func BatchProcessor[T DBDoc](dbAccess DBAccess) {
 		var tmp T
 		fmt.Println("[", reflect.TypeOf(tmp), "] len read batch: ", len(batch))
 
-		currentBatchChanMap := make(map[string][]chan interface{}, 0) // concurrent robotstxt lookup to the same host
-		for i, _ := range batch {
-			currentBatchChanMap[batch[i].Value] = append(currentBatchChanMap[batch[i].Value], batch[i].ResultChan)
-		}
-
-		currentBatch := make([]string, len(currentBatchChanMap))
-		idx := 0
-		for k, _ := range currentBatchChanMap {
-			currentBatch[idx] = k
-			idx += 1
-		}
-		if len(currentBatch) == 0 {
-			continue
-		}
-		results := BulkRead[T](dbAccess, "url", currentBatch)
-
-		for i, _ := range results {
-			for j, _ := range currentBatchChanMap[results[i].GetURL()] {
-				currentBatchChanMap[results[i].GetURL()][j] <- results[i]
+		go func(batch []DBRequest) {
+			currentBatchChanMap := make(map[string][]chan interface{}, 0) // concurrent robotstxt lookup to the same host
+			for i, _ := range batch {
+				currentBatchChanMap[batch[i].Value] = append(currentBatchChanMap[batch[i].Value], batch[i].ResultChan)
 			}
-			delete(currentBatchChanMap, results[i].GetURL())
-		}
-		for _, v := range currentBatchChanMap {
-			var tmp T
-			for i, _ := range v {
-				v[i] <- tmp
+
+			currentBatch := make([]string, len(currentBatchChanMap))
+			idx := 0
+			for k, _ := range currentBatchChanMap {
+				currentBatch[idx] = k
+				idx += 1
 			}
-		}
+			if len(currentBatch) == 0 {
+				return
+			}
+			results := BulkRead[T](dbAccess, "url", currentBatch)
+
+			for i, _ := range results {
+				for j, _ := range currentBatchChanMap[results[i].GetURL()] {
+					currentBatchChanMap[results[i].GetURL()][j] <- results[i]
+				}
+				delete(currentBatchChanMap, results[i].GetURL())
+			}
+			for _, v := range currentBatchChanMap {
+				var tmp T
+				for i, _ := range v {
+					v[i] <- tmp
+				}
+			}
+		}(batch)
+
 	}
 }
 
