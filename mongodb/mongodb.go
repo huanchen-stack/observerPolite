@@ -13,18 +13,24 @@ import (
 )
 
 type DBConn struct {
-	Ctx        context.Context
-	Client     *mongo.Client
-	Database   *mongo.Database
-	Collection *mongo.Collection
-	ReadBatch  []DBRequest
-	Mutex      sync.Mutex
+	Ctx           context.Context
+	Client        *mongo.Client
+	Database      *mongo.Database
+	Collection    *mongo.Collection
+	ReadBatchChan chan DBRequest
+	Mutex         sync.Mutex
 }
 
 func (db *DBConn) GetCtx() context.Context          { return db.Ctx }
 func (db *DBConn) GetCollection() *mongo.Collection { return db.Collection }
-func (db *DBConn) GetBatchRead() *[]DBRequest       { return &db.ReadBatch }
-func (db *DBConn) GetBatchMutex() *sync.Mutex       { return &db.Mutex }
+func (db *DBConn) GetBatchRead() []DBRequest {
+	curLen := len(db.ReadBatchChan)
+	readBatch := make([]DBRequest, curLen)
+	for i := 0; i < curLen; i++ {
+		readBatch[i] = <-db.ReadBatchChan
+	}
+	return readBatch
+}
 
 // Connect is mostly copied from mongodb website.
 //
@@ -65,27 +71,6 @@ func (db *DBConn) NewCollection(name string) {
 	db.Collection = collection
 }
 
-//func (db *DBConn) BulkRead(key string, vals []string) []cm.TaskPrint {
-//	filter := bson.M{key: bson.M{"$in": vals}}
-//	cursor, err := db.Collection.Find(db.Ctx, filter)
-//	if err != nil {
-//		if err == mongo.ErrNoDocuments {
-//			return make([]cm.TaskPrint, 0)
-//		} else {
-//			fmt.Println("DB Bulk Read Err") // TODO: fix this
-//			return make([]cm.TaskPrint, 0)
-//		}
-//	}
-//	defer cursor.Close(db.Ctx)
-//
-//	var results []cm.TaskPrint
-//	if err := cursor.All(db.Ctx, &results); err != nil {
-//		fmt.Println("DB Bulk Read Decode Err")
-//	}
-//
-//	return results
-//}
-
 func (db *DBConn) BulkWrite(dbDocs []cm.TaskPrint) (int, error) {
 	if !cm.GlobalConfig.DBlogging {
 		panic("app won't work without dblogging for now!")
@@ -108,7 +93,6 @@ func (db *DBConn) BulkWrite(dbDocs []cm.TaskPrint) (int, error) {
 		} else {
 			if !dbDoc.NeedsRetry {
 				doneWG++
-			} else {
 			}
 			writes = append(writes, mongo.NewInsertOneModel().SetDocument(dbDocs[i]))
 		}
@@ -179,42 +163,8 @@ func (db *DBConn) GetOne(key string, val string) cm.TaskPrint {
 	return result
 }
 
-//func (db *DBConn) BatchProcessor() {
-//	ticker := time.NewTicker(cm.GlobalConfig.DBWriteFrequency)
-//
-//	for range ticker.C {
-//		fmt.Println("len db readbatch: ", len(db.ReadBatch))
-//		db.Mutex.Lock()
-//		currentBatch := make([]string, len(db.ReadBatch))
-//		//currentBatchStatusMap := make(map[string]bool, 0)
-//		currentBatchChanMap := make(map[string]chan interface{}, 0)
-//		for i, _ := range db.ReadBatch {
-//			currentBatch[i] = db.ReadBatch[i].Value
-//			currentBatchChanMap[db.ReadBatch[i].Value] = db.ReadBatch[i].ResultChan
-//		}
-//		if len(currentBatchChanMap) != len(currentBatch) {
-//			panic("duplicate url input!!!")
-//		}
-//		db.ReadBatch = db.ReadBatch[:0]
-//		db.Mutex.Unlock()
-//
-//		if len(currentBatch) == 0 {
-//			continue
-//		}
-//		results := BulkRead[cm.TaskPrint](db, "url", currentBatch)
-//
-//		for i, _ := range results {
-//			currentBatchChanMap[results[i].URL] <- results[i]
-//			delete(currentBatchChanMap, results[i].URL)
-//		}
-//		for _, v := range currentBatchChanMap {
-//			v <- cm.TaskPrint{}
-//		}
-//	}
-//}
-
 func (db *DBConn) GetOneAsync(key string, val string) cm.TaskPrint {
-	resultFuture := GetOneAsync(key, val, &db.ReadBatch, &db.Mutex)
+	resultFuture := GetOneAsync(key, val, db.ReadBatchChan)
 	//time.Sleep(10 * time.Second)
 	result := resultFuture.Await()
 	typedResult, ok := result.(cm.TaskPrint)

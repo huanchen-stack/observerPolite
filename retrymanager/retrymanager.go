@@ -14,9 +14,10 @@ import (
 type RetryManager struct {
 	AllResults    *chan cm.TaskPrint
 	TaskPrintsRef *chan cm.TaskPrint
-	RetryBuff     []string
+	//RetryBuff     []string
+	retryBuffChan chan string
 	dbConnPrev    db.DBConn
-	mutex         sync.Mutex // For RetryBuff
+	//mutex         sync.Mutex // For RetryBuff
 }
 
 type RetryManagerInterface interface {
@@ -96,38 +97,45 @@ func (rm *RetryManager) Start() {
 	// Connect to prev DB collection (start another connection to DB)
 	// DB for comp (create index when doesn't exist)
 	rm.dbConnPrev = db.DBConn{
-		Ctx:       context.Background(),
-		ReadBatch: make([]db.DBRequest, 0),
+		Ctx:           context.Background(),
+		ReadBatchChan: make(chan db.DBRequest, 500000),
 	}
 	rm.dbConnPrev.Connect()
 	rm.dbConnPrev.Collection = rm.dbConnPrev.Database.Collection(cm.GlobalConfig.DBCollectionComp) //comp collection
 	rm.dbConnPrev.CreateIndex("url")
+	rm.retryBuffChan = make(chan string, 500000)
 	go db.BatchProcessor[cm.TaskPrint](&rm.dbConnPrev)
 
 	go func() {
 		ticker := time.NewTicker(cm.GlobalConfig.RetryPoliteness)
 		for range ticker.C {
 			fmt.Println("retry manager wakes up")
-			rm.mutex.Lock()
+
+			curLen := len(rm.retryBuffChan)
+			retryBuff := make([]string, curLen)
+			for i := 0; i < curLen; i++ {
+				retryBuff[i] = <-rm.retryBuffChan
+			}
+			//rm.mutex.Lock()
 
 			// WG: +1 per retry task assigned to worker
 			var wg sync.WaitGroup
-			wg.Add(len(rm.RetryBuff))
+			wg.Add(len(retryBuff))
 
-			allRetryResults := make(chan cm.TaskPrint, len(rm.RetryBuff))
+			allRetryResults := make(chan cm.TaskPrint, len(retryBuff))
 			politeness := time.Duration( // use float64 -> inf to get around div by 0 exception
-				float64(cm.GlobalConfig.RetryPoliteness) / float64(len(rm.RetryBuff)))
+				float64(cm.GlobalConfig.RetryPoliteness) / float64(len(retryBuff)))
 			worker := wk.GeneralWorker{
-				WorkerTasksStrs: make(chan string, len(rm.RetryBuff)),
+				WorkerTasksStrs: make(chan string, len(retryBuff)),
 				AllResultsRef:   &allRetryResults,
 			}
-			for i, _ := range rm.RetryBuff {
-				worker.WorkerTasksStrs <- rm.RetryBuff[i]
+			for i, _ := range retryBuff {
+				worker.WorkerTasksStrs <- retryBuff[i]
 			}
 			close(worker.WorkerTasksStrs)
-			rm.RetryBuff = rm.RetryBuff[:0]
+			//rm.RetryBuff = rm.RetryBuff[:0]
 
-			rm.mutex.Unlock()
+			//rm.mutex.Unlock()
 
 			// GO! RETRY WORKER GO!
 			go worker.StartRetry(politeness)
@@ -146,10 +154,8 @@ func (rm *RetryManager) Start() {
 
 	for result := range *rm.AllResults {
 		go func(localResult cm.TaskPrint) { // send db requests from multiple routines
-			if rm.NeedsRetry(localResult) { // append to buff if task needs retry
-				rm.mutex.Lock()
-				rm.RetryBuff = append(rm.RetryBuff, localResult.URL)
-				rm.mutex.Unlock()
+			if rm.NeedsRetry(localResult) {
+				rm.retryBuffChan <- localResult.URL
 				localResult.NeedsRetry = true
 			}
 

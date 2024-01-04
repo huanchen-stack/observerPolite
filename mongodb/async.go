@@ -7,7 +7,6 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 	cm "observerPolite/common"
 	"reflect"
-	"sync"
 	"time"
 )
 
@@ -33,8 +32,7 @@ type DBDoc interface {
 type DBAccess interface {
 	GetCtx() context.Context
 	GetCollection() *mongo.Collection
-	GetBatchRead() *[]DBRequest
-	GetBatchMutex() *sync.Mutex
+	GetBatchRead() []DBRequest
 }
 
 func BulkRead[T DBDoc](dbAccess DBAccess, key string, vals []string) []T {
@@ -66,20 +64,13 @@ func BatchProcessor[T DBDoc](dbAccess DBAccess) {
 
 	for range ticker.C {
 		batch := dbAccess.GetBatchRead()
-		mutex := dbAccess.GetBatchMutex()
 		var tmp T
-		fmt.Println(reflect.TypeOf(tmp), "len readbatch: ", len(*batch))
+		fmt.Println("[", reflect.TypeOf(tmp), "] len read batch: ", len(batch))
 
-		mutex.Lock()
 		currentBatchChanMap := make(map[string][]chan interface{}, 0) // concurrent robotstxt lookup to the same host
-		for i, _ := range *batch {
-			currentBatchChanMap[(*batch)[i].Value] = append(currentBatchChanMap[(*batch)[i].Value], (*batch)[i].ResultChan)
+		for i, _ := range batch {
+			currentBatchChanMap[batch[i].Value] = append(currentBatchChanMap[batch[i].Value], batch[i].ResultChan)
 		}
-		//if len(currentBatchChanMap) != len(currentBatch) {
-		//	panic("duplicate url input!!!")
-		//}
-		*batch = (*batch)[:0]
-		mutex.Unlock()
 
 		currentBatch := make([]string, len(currentBatchChanMap))
 		idx := 0
@@ -107,15 +98,11 @@ func BatchProcessor[T DBDoc](dbAccess DBAccess) {
 	}
 }
 
-func GetOneAsync(key string, val string, readBatch *[]DBRequest, mutex *sync.Mutex) *FutureResult {
+func GetOneAsync(key string, val string, readBatchChan chan DBRequest) *FutureResult {
 	resultChan := make(chan interface{}, 1)
-
-	mutex.Lock()
-	*readBatch = append(*readBatch, DBRequest{
+	readBatchChan <- DBRequest{
 		Key: key, Value: val,
 		ResultChan: resultChan,
-	})
-	mutex.Unlock()
-
+	}
 	return &FutureResult{resultChan: resultChan}
 }

@@ -406,7 +406,6 @@ func (gw *GeneralWorker) Start() {
 //	If a worker is started with this func, there's no need to create tasks from strings or perform robots check.
 func (gw *GeneralWorker) StartRetry(politeness time.Duration) {
 	gw.bypassRobots = true
-
 	var wg sync.WaitGroup
 
 	for urlStr := range gw.WorkerTasksStrs {

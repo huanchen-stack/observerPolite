@@ -3,6 +3,7 @@ package core
 import (
 	"container/heap"
 	"context"
+	"fmt"
 	"log"
 	"math/rand"
 	"net/http"
@@ -153,29 +154,25 @@ func CORE() {
 
 	// GO! DB GO!
 	go func() {
-		var writeBuff []cm.TaskPrint
-		var mutex sync.Mutex // for writeBuff
 
 		// Wakes up periodically and flush all printable results from buffer to DB
 		go func() {
 			ticker := time.NewTicker(cm.GlobalConfig.DBWriteFrequency)
 			for range ticker.C {
-				mutex.Lock()
+				curLen := len(taskPrints)
+				writeBuff := make([]cm.TaskPrint, curLen)
+				for i := 0; i < curLen; i++ {
+					writeBuff[i] = <-taskPrints
+				}
 				doneWG, _ := dbConn.BulkWrite(writeBuff)
+
+				fmt.Println("DB LOG:", curLen, " \t| doneWG:", doneWG)
+
 				for i := 0; i < doneWG; i++ {
 					wg.Done()
 				}
-				writeBuff = writeBuff[:0]
-				mutex.Unlock()
 			}
 		}()
-
-		// Listen for all printable tasks, append to buff
-		for taskPrint := range taskPrints {
-			mutex.Lock()
-			writeBuff = append(writeBuff, taskPrint)
-			mutex.Unlock()
-		}
 	}()
 
 	wg.Wait()                                    // WG: +1 per task assigned to workers; -1 per task logged to DB
