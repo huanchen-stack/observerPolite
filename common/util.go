@@ -174,7 +174,7 @@ func PrintResp(resp *http.Response) RespPrint {
 				dynamicBuf.Write(chunkBuf[:n]) // Write the last partial chunk
 				break
 			}
-			fmt.Println("PrintResp err io.Reader")
+			fmt.Println(resp.Request.URL, "PrintResp err io.Reader")
 			break
 		}
 

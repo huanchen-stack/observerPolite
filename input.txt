@@ -14,3 +14,9 @@ http://google.com, D
 https://google.com
 http://www.google.com
 https://www.google.com, F
+
+
+https://www.ojp.usdoj.gov/bjs/homicide/race.htm
+http://www.idsia.ch/~juergen/computeruniverse.html
+
+negative wait group???

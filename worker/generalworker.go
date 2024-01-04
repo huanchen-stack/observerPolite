@@ -413,8 +413,8 @@ func (gw *GeneralWorker) StartRetry(politeness time.Duration) {
 			URL: urlStr,
 		}
 		tmpTask.Retry.Retried = true
-		go gw.HandleTask(*tmpTask, &wg)
 		wg.Add(1)
+		go gw.HandleTask(*tmpTask, &wg)
 		time.Sleep(politeness)
 		//fmt.Printf("Time: %.2f | Initiating task %s (scheduled: %.2f)\n",
 		//	time.Since(start).Seconds(), task.URL, task.Schedule.Seconds())
