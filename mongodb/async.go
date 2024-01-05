@@ -91,7 +91,7 @@ func BatchProcessor[T DBDoc](dbAccess DBAccess) {
 			for i, _ := range results {
 				size_ += int(unsafe.Sizeof(results[i]))
 			}
-			fmt.Println("[ ", reflect.TypeOf(tmp), "][ bulk read ] (len: ", len(currentBatch), ") (size: ", size_, ") Time passed since start", time.Since(start))
+			fmt.Println("[", reflect.TypeOf(tmp), "][ bulk read ] (len:", len(currentBatch), ") (size:", size_, ") Time passed since start", time.Since(start))
 
 			for i, _ := range results {
 				for j, _ := range currentBatchChanMap[results[i].GetURL()] {
