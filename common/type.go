@@ -18,8 +18,11 @@ type Config struct {
 	DBCollection       string
 	DBCollectionComp   string
 	ESelfTagBuffLen    int
+	DNSdist            bool
+	DNSdistPort        string
 	RetryPoliteness    time.Duration
 	PProfDumpFrequency time.Duration
+
 	HeartbeatEmailFrom string
 	HeartbeatEmailTo   string
 	HeartbeatEmailPW   string

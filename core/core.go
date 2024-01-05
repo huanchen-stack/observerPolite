@@ -153,17 +153,17 @@ func CORE() {
 	go retryManager.Start()
 
 	// GO! DB GO!
+	// 	Wakes up periodically and flush all printable results from buffer to DB
 	go func() {
+		ticker := time.NewTicker(cm.GlobalConfig.DBWriteFrequency)
+		for range ticker.C {
+			curLen := len(taskPrints)
+			writeBuff := make([]cm.TaskPrint, curLen)
+			for i := 0; i < curLen; i++ {
+				writeBuff[i] = <-taskPrints
+			}
 
-		// Wakes up periodically and flush all printable results from buffer to DB
-		go func() {
-			ticker := time.NewTicker(cm.GlobalConfig.DBWriteFrequency)
-			for range ticker.C {
-				curLen := len(taskPrints)
-				writeBuff := make([]cm.TaskPrint, curLen)
-				for i := 0; i < curLen; i++ {
-					writeBuff[i] = <-taskPrints
-				}
+			go func() {
 				doneWG, _ := dbConn.BulkWrite(writeBuff)
 
 				fmt.Println("DB LOG:", curLen, " \t| doneWG:", doneWG)
@@ -171,8 +171,8 @@ func CORE() {
 				for i := 0; i < doneWG; i++ {
 					wg.Done()
 				}
-			}
-		}()
+			}()
+		}
 	}()
 
 	wg.Wait()                                    // WG: +1 per task assigned to workers; -1 per task logged to DB

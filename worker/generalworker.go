@@ -67,12 +67,21 @@ func DNSLookUp(hostname string) (string, error) {
 	dialer := &net.Dialer{
 		Timeout: time.Second * 10,
 	}
-	secureRandomIndex := cm.GetRandomIndex(len(cm.DNSServers))
-	dnsServer := cm.DNSServers[secureRandomIndex]
+	var dnsServer string
+	var port string
+	if cm.GlobalConfig.DNSdist {
+		dnsServer = "127.0.0.1"
+		port = cm.GlobalConfig.DNSdistPort
+	} else {
+		secureRandomIndex := cm.GetRandomIndex(len(cm.DNSServers))
+		dnsServer = cm.DNSServers[secureRandomIndex]
+		port = "53"
+	}
+
 	resolver := &net.Resolver{
 		PreferGo: true,
 		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-			return dialer.DialContext(ctx, "udp", dnsServer+":53")
+			return dialer.DialContext(ctx, "udp", dnsServer+port)
 		},
 	}
 	ips, err := resolver.LookupIP(context.Background(), "ip", hostname)

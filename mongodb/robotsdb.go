@@ -47,10 +47,12 @@ func (rb *RobotsDBConn) Connect() {
 
 	// Use the SetServerAPIOptions() method to set the Stable API version to 1
 	serverAPI := options.ServerAPI(options.ServerAPIVersion1)
-	opts := options.Client().ApplyURI(cm.GlobalConfig.DBURI).SetServerAPIOptions(serverAPI)
+	clientOptions := options.Client().ApplyURI(cm.GlobalConfig.DBURI)
+	clientOptions.SetServerAPIOptions(serverAPI)
+	clientOptions.SetMaxPoolSize(500)
 
 	// Create a new client and connect to the server
-	client, err := mongo.Connect(rb.Ctx, opts)
+	client, err := mongo.Connect(rb.Ctx, clientOptions)
 	if err != nil {
 		panic(err)
 	}
@@ -163,10 +165,9 @@ func (rb *RobotsDBConn) FetchOne(url_ string) *robotstxt.Group {
 
 func (rb *RobotsDBConn) FetchOneAsyncFixedInterval(key string, val string) *robotstxt.Group {
 	resultFuture := GetOneAsync(key, val, rb.ReadBatchChan)
-	time.Sleep(10 * time.Second)
 	start := time.Now()
 	result := resultFuture.Await()
-	time.Sleep(cm.GlobalConfig.DBWriteFrequency - (time.Since(start)))
+	defer time.Sleep(2*cm.GlobalConfig.DBWriteFrequency - (time.Since(start)))
 
 	robotsPrint, ok := result.(cm.RobotsPrint)
 	if !ok {

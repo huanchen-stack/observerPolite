@@ -8,6 +8,7 @@ import (
 	cm "observerPolite/common"
 	"reflect"
 	"time"
+	"unsafe"
 )
 
 type FutureResult struct {
@@ -67,7 +68,7 @@ func BatchProcessor[T DBDoc](dbAccess DBAccess) {
 		var tmp T
 		fmt.Println("[", reflect.TypeOf(tmp), "] len read batch: ", len(batch))
 
-		go func(batch []DBRequest) {
+		go func() {
 			currentBatchChanMap := make(map[string][]chan interface{}, 0) // concurrent robotstxt lookup to the same host
 			for i, _ := range batch {
 				currentBatchChanMap[batch[i].Value] = append(currentBatchChanMap[batch[i].Value], batch[i].ResultChan)
@@ -82,7 +83,15 @@ func BatchProcessor[T DBDoc](dbAccess DBAccess) {
 			if len(currentBatch) == 0 {
 				return
 			}
+			start := time.Now()
+
 			results := BulkRead[T](dbAccess, "url", currentBatch)
+
+			size_ := 0
+			for i, _ := range results {
+				size_ += int(unsafe.Sizeof(results[i]))
+			}
+			fmt.Println("[ ", reflect.TypeOf(tmp), "][ bulk read ] (len: ", len(currentBatch), ") (size: ", size_, ") Time passed since start", time.Since(start))
 
 			for i, _ := range results {
 				for j, _ := range currentBatchChanMap[results[i].GetURL()] {
@@ -96,7 +105,7 @@ func BatchProcessor[T DBDoc](dbAccess DBAccess) {
 					v[i] <- tmp
 				}
 			}
-		}(batch)
+		}()
 
 	}
 }

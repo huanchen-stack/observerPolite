@@ -16,10 +16,12 @@ var GlobalConfig = Config{
 	DBlogging:       true,             // write to database or print only
 	DBURI:           "mongodb+srv://admin:admin@observerdb.borsr21.mongodb.net/?retryWrites=true&w=majority",
 	//DBURI:              "mongodb://localhost:27017",    // use local mongodb on fable.eecs.umich.edu
-	DBWriteFrequency:   5 * time.Second,  // write scan results to DB in batches
-	DBCollection:       "T",              // new db collection name
-	DBCollectionComp:   "EmptyScan",      // prev db collection name (for comparison -> retry)
-	ESelfTagBuffLen:    4096000,          // buff size for self Etag compute
+	DBWriteFrequency:   5 * time.Second, // write scan results to DB in batches
+	DBCollection:       "T",             // new db collection name
+	DBCollectionComp:   "EmptyScan",     // prev db collection name (for comparison -> retry)
+	ESelfTagBuffLen:    4096000,         // buff size for self Etag compute
+	DNSdist:            false,
+	DNSdistPort:        "5353",
 	RetryPoliteness:    1 * time.Second,  // retry frequency
 	PProfDumpFrequency: 60 * time.Second, // profiler (heap/goroutine) dump frequency (for debug)
 
@@ -31,21 +33,21 @@ var GlobalConfig = Config{
 }
 
 func ParseFlags() {
-	flag.BoolVar(&GlobalConfig.Debugging, "debugging", GlobalConfig.Debugging, "Debugging with pprof")
-	flag.StringVar(&GlobalConfig.InputFileName, "inputFileName", GlobalConfig.InputFileName, "Name of the input file")
-	flag.DurationVar(&GlobalConfig.ExpectedRuntime, "expectedRuntime", GlobalConfig.ExpectedRuntime, "Expected total runtime")
-	flag.DurationVar(&GlobalConfig.Timeout, "timeout", GlobalConfig.Timeout, "General worker timeout")
-	flag.IntVar(&GlobalConfig.WorkerStress, "workerStress", GlobalConfig.WorkerStress, "Max number of tasks per worker")
-	flag.IntVar(&GlobalConfig.RobotsBuffSize, "robotsBuffSize", GlobalConfig.RobotsBuffSize, "Write robots to db in batches")
-	flag.IntVar(&GlobalConfig.Retries, "retries", GlobalConfig.Retries, "Max number of retries when connection error")
-	flag.BoolVar(&GlobalConfig.DBlogging, "dbLogging", GlobalConfig.DBlogging, "Write to database or print only")
-	flag.StringVar(&GlobalConfig.DBURI, "dbURI", GlobalConfig.DBURI, "Database URI")
-	flag.DurationVar(&GlobalConfig.DBWriteFrequency, "dbWriteFrequency", GlobalConfig.DBWriteFrequency, "Write scan results to DB in batches")
-	flag.StringVar(&GlobalConfig.DBCollection, "dbCollection", GlobalConfig.DBCollection, "New db collection name")
-	flag.StringVar(&GlobalConfig.DBCollectionComp, "dbCollectionComp", GlobalConfig.DBCollectionComp, "Previous db collection name")
-	flag.IntVar(&GlobalConfig.ESelfTagBuffLen, "eSelfTagBuffLen", GlobalConfig.ESelfTagBuffLen, "Buffer size for self ETag compute")
-	flag.DurationVar(&GlobalConfig.RetryPoliteness, "retryPoliteness", GlobalConfig.RetryPoliteness, "Retry frequency")
-	flag.DurationVar(&GlobalConfig.PProfDumpFrequency, "pProfDumpFrequency", GlobalConfig.PProfDumpFrequency, "Profiler dump frequency")
+	//flag.BoolVar(&GlobalConfig.Debugging, "debugging", GlobalConfig.Debugging, "Debugging with pprof")
+	//flag.StringVar(&GlobalConfig.InputFileName, "inputFileName", GlobalConfig.InputFileName, "Name of the input file")
+	//flag.DurationVar(&GlobalConfig.ExpectedRuntime, "expectedRuntime", GlobalConfig.ExpectedRuntime, "Expected total runtime")
+	//flag.DurationVar(&GlobalConfig.Timeout, "timeout", GlobalConfig.Timeout, "General worker timeout")
+	//flag.IntVar(&GlobalConfig.WorkerStress, "workerStress", GlobalConfig.WorkerStress, "Max number of tasks per worker")
+	//flag.IntVar(&GlobalConfig.RobotsBuffSize, "robotsBuffSize", GlobalConfig.RobotsBuffSize, "Write robots to db in batches")
+	//flag.IntVar(&GlobalConfig.Retries, "retries", GlobalConfig.Retries, "Max number of retries when connection error")
+	//flag.BoolVar(&GlobalConfig.DBlogging, "dbLogging", GlobalConfig.DBlogging, "Write to database or print only")
+	//flag.StringVar(&GlobalConfig.DBURI, "dbURI", GlobalConfig.DBURI, "Database URI")
+	//flag.DurationVar(&GlobalConfig.DBWriteFrequency, "dbWriteFrequency", GlobalConfig.DBWriteFrequency, "Write scan results to DB in batches")
+	//flag.StringVar(&GlobalConfig.DBCollection, "dbCollection", GlobalConfig.DBCollection, "New db collection name")
+	//flag.StringVar(&GlobalConfig.DBCollectionComp, "dbCollectionComp", GlobalConfig.DBCollectionComp, "Previous db collection name")
+	//flag.IntVar(&GlobalConfig.ESelfTagBuffLen, "eSelfTagBuffLen", GlobalConfig.ESelfTagBuffLen, "Buffer size for self ETag compute")
+	//flag.DurationVar(&GlobalConfig.RetryPoliteness, "retryPoliteness", GlobalConfig.RetryPoliteness, "Retry frequency")
+	//flag.DurationVar(&GlobalConfig.PProfDumpFrequency, "pProfDumpFrequency", GlobalConfig.PProfDumpFrequency, "Profiler dump frequency")
 
 	//flag.StringVar(&GlobalConfig.HeartbeatEmailFrom, "heartbeatEmailFrom", GlobalConfig.HeartbeatEmailFrom, "Heartbeat email from address")
 	//flag.StringVar(&GlobalConfig.HeartbeatEmailPW, "heartbeatEmailPW", GlobalConfig.HeartbeatEmailPW, "Heartbeat email password")
@@ -56,22 +58,49 @@ func ParseFlags() {
 }
 
 var DNSServers = []string{
+	//"127.0.0.1",
+
 	"8.8.8.8",
 	"8.8.4.4",
 	"1.1.1.1",
 	"1.0.0.1",
-	"76.76.2.0",
-	"76.76.10.0",
-	"9.9.9.9",
-	"149.112.112.112",
-	"208.67.222.222",
-	"208.67.220.220",
+
+	// "76.76.2.0",
+	// "76.76.10.0",
+	// "9.9.9.9",
+	// "149.112.112.112",
+	// "208.67.222.222",
+	// "208.67.220.220",
 	// "185.228.168.9",
 	// "185.228.169.9",
 	// "76.76.19.19",
 	// "76.223.122.150",
 	// "94.140.14.14",
 	// "84.140.15.15",
+
+	// "24.218.117.81",
+	// "206.74.78.88",
+	// "35.128.46.58",
+	// "71.174.91.15",
+	// "23.239.215.98",
+	// "65.153.78.153",
+	// "54.187.61.200",
+	// "169.55.51.86",
+	// "76.188.165.136",
+	// "50.223.52.23",
+	// "173.162.106.221",
+	// "172.84.132.171",
+	// "12.119.50.62",
+	// "104.238.212.185",
+	// "12.200.199.75",
+	// "63.41.144.124",
+	// "108.49.223.152",
+	// "24.19.134.239",
+	// "12.201.30.201",
+	// "52.235.135.129",
+	// "50.229.170.233",
+	// "173.223.99.56",
+	// "73.253.160.199",
 }
 
 var ExcludedList = map[string]struct{}{}

@@ -38,10 +38,12 @@ func (db *DBConn) GetBatchRead() []DBRequest {
 func (db *DBConn) Connect() {
 	// Use the SetServerAPIOptions() method to set the Stable API version to 1
 	serverAPI := options.ServerAPI(options.ServerAPIVersion1)
-	opts := options.Client().ApplyURI(cm.GlobalConfig.DBURI).SetServerAPIOptions(serverAPI)
+	clientOptions := options.Client().ApplyURI(cm.GlobalConfig.DBURI)
+	clientOptions.SetServerAPIOptions(serverAPI)
+	clientOptions.SetMaxPoolSize(500)
 
 	// Create a new client and connect to the server
-	client, err := mongo.Connect(db.Ctx, opts)
+	client, err := mongo.Connect(db.Ctx, clientOptions)
 	if err != nil {
 		panic(err)
 	}
