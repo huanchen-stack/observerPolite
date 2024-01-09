@@ -1,0 +1,24 @@
+var GlobalConfig = Config{
+	Debugging:       true,
+	InputFileName:   "input.txt",
+	ExpectedRuntime: 432000 * time.Second,  // expected total runtime
+	Timeout:         30 * time.Second, // see generalworker.go
+	WorkerStress:    5000,             // max number of tasks per worker
+	RobotsBuffSize:  10000,                // write robots to db in batches (also serve as "cache" before writing to db)
+	Retries:         2,                // max number of retries when connection err
+	DBlogging:       true,             // write to database or print only
+	// DBURI:           "mongodb+srv://admin:admin@observerdb.borsr21.mongodb.net/?retryWrites=true&w=majority",
+	DBURI:              "mongodb://localhost:27017",    // use local mongodb on fable.eecs.umich.edu
+	DBWriteFrequency:   10 * time.Second,  // write scan results to DB in batches
+	DBCollection:       "TenMilScan",              // new db collection name
+	DBCollectionComp:   "TenMilScan12082023_dedeup",      // prev db collection name (for comparison -> retry)
+	ESelfTagBuffLen:    4096000,          // buff size for self Etag compute
+	RetryPoliteness:    86400 * time.Second,  // retry frequency
+	PProfDumpFrequency: 600 * time.Second, // profiler (heap/goroutine) dump frequency (for debug)
+
+	//Heartbeat configurations are deprecated... neglect for now
+	HeartbeatEmailFrom: "sunhuanchen99@gmail.com",
+	HeartbeatEmailPW:   "", //TODO:use app password
+	HeartbeatEmailTo:   "huanchen@umich.edu",
+	HeartbeatDuration:  10 * time.Second,
+}
