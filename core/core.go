@@ -49,7 +49,8 @@ func periodicGoroutineDump(filename string, duration time.Duration) {
 
 func CORE() {
 
-	//cm.ParseFlags()
+	cm.ParseFlags()
+	fmt.Println(cm.GlobalConfig.DBCollection, cm.GlobalConfig.DBCollectionComp)
 
 	if cm.GlobalConfig.Debugging {
 		go func() {

@@ -33,26 +33,12 @@ var GlobalConfig = Config{
 }
 
 func ParseFlags() {
-	//flag.BoolVar(&GlobalConfig.Debugging, "debugging", GlobalConfig.Debugging, "Debugging with pprof")
-	//flag.StringVar(&GlobalConfig.InputFileName, "inputFileName", GlobalConfig.InputFileName, "Name of the input file")
-	//flag.DurationVar(&GlobalConfig.ExpectedRuntime, "expectedRuntime", GlobalConfig.ExpectedRuntime, "Expected total runtime")
-	//flag.DurationVar(&GlobalConfig.Timeout, "timeout", GlobalConfig.Timeout, "General worker timeout")
-	//flag.IntVar(&GlobalConfig.WorkerStress, "workerStress", GlobalConfig.WorkerStress, "Max number of tasks per worker")
-	//flag.IntVar(&GlobalConfig.RobotsBuffSize, "robotsBuffSize", GlobalConfig.RobotsBuffSize, "Write robots to db in batches")
-	//flag.IntVar(&GlobalConfig.Retries, "retries", GlobalConfig.Retries, "Max number of retries when connection error")
-	//flag.BoolVar(&GlobalConfig.DBlogging, "dbLogging", GlobalConfig.DBlogging, "Write to database or print only")
-	//flag.StringVar(&GlobalConfig.DBURI, "dbURI", GlobalConfig.DBURI, "Database URI")
-	//flag.DurationVar(&GlobalConfig.DBWriteFrequency, "dbWriteFrequency", GlobalConfig.DBWriteFrequency, "Write scan results to DB in batches")
-	//flag.StringVar(&GlobalConfig.DBCollection, "dbCollection", GlobalConfig.DBCollection, "New db collection name")
-	//flag.StringVar(&GlobalConfig.DBCollectionComp, "dbCollectionComp", GlobalConfig.DBCollectionComp, "Previous db collection name")
-	//flag.IntVar(&GlobalConfig.ESelfTagBuffLen, "eSelfTagBuffLen", GlobalConfig.ESelfTagBuffLen, "Buffer size for self ETag compute")
-	//flag.DurationVar(&GlobalConfig.RetryPoliteness, "retryPoliteness", GlobalConfig.RetryPoliteness, "Retry frequency")
-	//flag.DurationVar(&GlobalConfig.PProfDumpFrequency, "pProfDumpFrequency", GlobalConfig.PProfDumpFrequency, "Profiler dump frequency")
-
-	//flag.StringVar(&GlobalConfig.HeartbeatEmailFrom, "heartbeatEmailFrom", GlobalConfig.HeartbeatEmailFrom, "Heartbeat email from address")
-	//flag.StringVar(&GlobalConfig.HeartbeatEmailPW, "heartbeatEmailPW", GlobalConfig.HeartbeatEmailPW, "Heartbeat email password")
-	//flag.StringVar(&GlobalConfig.HeartbeatEmailTo, "heartbeatEmailTo", GlobalConfig.HeartbeatEmailTo, "Heartbeat email to address")
-	//flag.DurationVar(&GlobalConfig.HeartbeatDuration, "heartbeatDuration", GlobalConfig.HeartbeatDuration, "Heartbeat duration")
+	flag.StringVar(
+		&GlobalConfig.DBCollection, "dbCollection",
+		GlobalConfig.DBCollection, "New db collection name")
+	flag.StringVar(
+		&GlobalConfig.DBCollectionComp, "dbCollectionComp",
+		GlobalConfig.DBCollectionComp, "Previous db collection name")
 
 	flag.Parse()
 }
