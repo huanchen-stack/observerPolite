@@ -61,7 +61,7 @@ func (db *DBConn) Connect() {
 
 func (db *DBConn) NewCollection(name string) {
 	currentTime := time.Now()
-	timeString := currentTime.Format("01022006")
+	timeString := currentTime.Format("20060102")
 	if len(name) > 4 && name[:4] == "test" { // Provides extra sanity for testing
 		timeString = ""
 	}

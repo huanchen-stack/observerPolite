@@ -75,7 +75,7 @@ func DNSLookUp(hostname string) (string, error) {
 	} else {
 		secureRandomIndex := cm.GetRandomIndex(len(cm.DNSServers))
 		dnsServer = cm.DNSServers[secureRandomIndex]
-		port = "53"
+		port = ":53"
 	}
 
 	resolver := &net.Resolver{
