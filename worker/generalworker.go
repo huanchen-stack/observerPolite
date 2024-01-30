@@ -212,6 +212,9 @@ func MakeClient(parsedURL *url.URL, redirectChain *[]string, taskIP *string) (*h
 
 			// use prev timeoutMult for the same task
 			//		(ideally for the same hostname with a timeout on this knowledge)
+			if parsedURL.Hostname() != req.URL.Hostname() {
+				*taskIP = ""
+			}
 			newTransport, err := TransportLayerOT(req.URL, taskIP, timeoutMult)
 			if err != nil {
 				return err

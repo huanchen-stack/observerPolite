@@ -7,7 +7,7 @@ import (
 
 var GlobalConfig = Config{
 	Debugging:       true,
-	InputFileName:   "input.txt",
+	InputFileName:   "input2.txt",
 	ExpectedRuntime: 1 * time.Second,  // expected total runtime
 	Timeout:         10 * time.Second, // see generalworker.go
 	WorkerStress:    5000,             // max number of tasks per worker
