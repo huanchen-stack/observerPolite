@@ -236,7 +236,8 @@ func (rb *RobotsDBConn) Get(scheme string, hostname string) *robotstxt.Group {
 	rb.mutexCache.Unlock()
 
 	//fmt.Println("robot cache MISS, checking in db...")
-	return rb.FetchOneAsyncFixedInterval("url", parsedURL.String())
+	return rb.FetchOne(parsedURL.String())
+	//return rb.FetchOneAsyncFixedInterval("url", parsedURL.String())
 }
 
 func (rb *RobotsDBConn) Add(scheme string, hostname string, expiration time.Time, group *robotstxt.Group, respBodyStr string) {
