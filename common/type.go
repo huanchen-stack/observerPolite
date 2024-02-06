@@ -12,6 +12,8 @@ type Config struct {
 	WorkerStress       int
 	RobotsBuffSize     int
 	Retries            int
+	HostCheckSlowdown  int
+	UserAgent          string
 	DBlogging          bool
 	DBURI              string
 	DBWriteFrequency   time.Duration
@@ -30,9 +32,10 @@ type Config struct {
 } // all hyperparameters users are allowed to config
 
 type TaskStrsByHostname struct {
-	Schedule   time.Duration
-	Politeness time.Duration
-	TaskStrs   chan string // taskStr: f"{url}, {source(wiki article)}"
+	Schedule       time.Duration
+	Politeness     time.Duration
+	SitemapFetched bool
+	TaskStrs       chan string // taskStr: f"{url}, {source(wiki article)}"
 } // this is assigned to workers; each hostname has a struct like this
 
 type RespPrint struct {
@@ -72,27 +75,6 @@ type TaskPrint struct {
 } // stores scan results
 
 func (tp TaskPrint) GetURL() string { return tp.URL }
-
-//type RetryPrint struct {
-//	Retried       bool
-//	RedirectChain []string
-//	DstChange     DstChangePrint
-//	RespPrint     RespPrint
-//	Err           string
-//} // created for TaskPrint; db logging helper
-
-//type TaskPrint struct {
-//	SourceURL     string
-//	Hostname      string
-//	URL           string
-//	IP            string
-//	RedirectChain []string
-//	DstChange     DstChangePrint
-//	RespPrint     RespPrint
-//	Err           string
-//	NeedsRetry    bool
-//	Retry         RetryPrint
-//} // db logging helper
 
 type RobotsPrint struct {
 	URL         string

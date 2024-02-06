@@ -66,16 +66,14 @@ func CORE() {
 
 	// Handle DB connection for scan results
 	dbConn := db.DBConn{
-		Ctx:        context.Background(),
-		Client:     nil,
-		Database:   nil,
-		Collection: nil,
+		Ctx: context.Background(),
 	}
 	dbConn.Connect()
 	if cm.GlobalConfig.DBCollection != "" { // for debugging
 		dbConn.NewCollection(cm.GlobalConfig.DBCollection)
 		dbConn.CreateIndex("url")
 	}
+	defer dbConn.Disconnect()
 
 	// Handle DB connection for robots.txt
 	rbConn := db.RobotsDBConn{
@@ -83,6 +81,14 @@ func CORE() {
 		CacheSize: cm.GlobalConfig.RobotsBuffSize,
 	}
 	rbConn.Connect()
+	defer rbConn.Disconnect()
+
+	// Handle DB connection for sitemap.xml
+	spConn := db.SitemapDBConn{
+		Ctx: context.Background(),
+	}
+	spConn.Connect()
+	defer spConn.Disconnect()
 
 	// Read and parse from .txt
 	taskStrs, err := cm.ReadTaskStrsFromInput(cm.GlobalConfig.InputFileName)
@@ -105,6 +111,7 @@ func CORE() {
 			WorkerTasksHeap: *workerTasksHeap,
 			AllResultsRef:   &allResults,
 			RBConn:          &rbConn,
+			SPConn:          &spConn,
 		}
 		for j, _ := range workerTaskStrList[i] {
 			politeness := time.Duration(cm.GlobalConfig.ExpectedRuntime.Seconds() / float64(len(workerTaskStrList[i][j])))
@@ -178,7 +185,4 @@ func CORE() {
 
 	wg.Wait()                                    // WG: +1 per task assigned to workers; -1 per task logged to DB
 	time.Sleep(cm.GlobalConfig.DBWriteFrequency) // in case the program would end before db logging finishes
-
-	rbConn.Disconnect()
-	dbConn.Disconnect()
 }

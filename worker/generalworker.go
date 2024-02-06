@@ -23,6 +23,7 @@ type GeneralWorker struct {
 	WorkerTasksStrs chan string        // for retry
 	AllResultsRef   *chan cm.TaskPrint // those tasks can be copied into channels
 	RBConn          *db.RobotsDBConn
+	SPConn          *db.SitemapDBConn
 	bypassRobots    bool
 }
 
@@ -148,6 +149,7 @@ func TransportLayerOT(parsedURL *url.URL, taskIP *string, timeoutMult int) (*htt
 	// DNS Lookup
 	if *taskIP == "" {
 		IP, err := DNSLookUp(parsedURL.Hostname())
+		//fmt.Println(parsedURL.Hostname(), IP)
 		if err != nil {
 			return nil, err
 		}
@@ -217,13 +219,17 @@ func MakeClient(parsedURL *url.URL, redirectChain *[]string, taskIP *string) (*h
 			}
 			newTransport, err := TransportLayerOT(req.URL, taskIP, timeoutMult)
 			if err != nil {
+				*redirectChain = append(
+					*redirectChain,
+					"0"+"-"+*taskIP+" "+req.URL.String(),
+				)
 				return err
 			}
 			client.Transport = newTransport
 
 			*redirectChain = append(
 				*redirectChain,
-				strconv.Itoa(req.Response.StatusCode)+" "+req.URL.String(),
+				strconv.Itoa(req.Response.StatusCode)+"-"+*taskIP+" "+req.URL.String(),
 			)
 			return nil
 		},
@@ -239,7 +245,7 @@ func MakeRequest(parsedURL *url.URL) (*http.Request, error) {
 		err := fmt.Errorf("request creation error: %w", err)
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "Web Measure/1.0 (https://webresearch.eecs.umich.edu/overview-of-web-measurements/) Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/79.0.3945.130 Safari/537.36")
+	req.Header.Set("User-Agent", cm.GlobalConfig.UserAgent)
 	req.Header.Set("Cache-Control", "no-cache")
 	return req, nil
 }
@@ -296,6 +302,7 @@ func (gw *GeneralWorker) HandleTask(task cm.TaskPrint, wg *sync.WaitGroup) {
 	}
 	*redirectChain = []string{}
 
+	task.IP = ""
 	client, err = MakeClient(parsedURL, redirectChain, &(task.IP))
 	if err != nil {
 		return
@@ -350,6 +357,7 @@ func (gw *GeneralWorker) HandleTask(task cm.TaskPrint, wg *sync.WaitGroup) {
 		)
 
 		*redirectChain = (*redirectChain)[:0]
+		task.IP = ""
 		client, err = MakeClient(parsedURL, redirectChain, &task.IP)
 		if err != nil {
 			gw.ErrorLog(&task, err)
@@ -364,6 +372,10 @@ func (gw *GeneralWorker) HandleTask(task cm.TaskPrint, wg *sync.WaitGroup) {
 		err = fmt.Errorf("HTTPS request error: %w", err)
 		return
 	}
+}
+
+func (gw *GeneralWorker) HandleSitemapFetch(parsedURL *url.URL) {
+
 }
 
 // FetchTask is essentially a spread out K-sort.
@@ -381,6 +393,24 @@ func (gw *GeneralWorker) FetchTask() (cm.TaskPrint, time.Duration) {
 	URL := strings.TrimSpace(strL[0])
 	src := strings.TrimSpace(strL[1])
 	parsedURL, _ := url.Parse(URL)
+
+	if !taskStrsByHostname.SitemapFetched {
+		go gw.SitemapFetch("https://" + parsedURL.Hostname())
+		taskStrsByHostname.SitemapFetched = true
+	}
+
+	//if !taskStrsByHostname.SitemapFetched {
+	//	start := time.Now()
+	//	randSkip := rand.Intn(cm.GlobalConfig.HostCheckSlowdown)
+	//	time.Sleep(time.Duration(randSkip) * taskStrsByHostname.Politeness)
+	//
+	//	gw.HandleSitemapFetch(parsedURL.Hostname())
+	//
+	//	time.Sleep(time.Duration(cm.GlobalConfig.HostCheckSlowdown)*taskStrsByHostname.Politeness - time.Since(start))
+	//	taskStrsByHostname.Schedule += time.Duration(cm.GlobalConfig.HostCheckSlowdown) * taskStrsByHostname.Politeness
+	//	taskStrsByHostname.SitemapFetched = true
+	//}
+
 	taskSchedule := taskStrsByHostname.Schedule
 	task := cm.TaskPrint{
 		Source:   src,

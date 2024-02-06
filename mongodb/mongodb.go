@@ -8,7 +8,6 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"log"
 	cm "observerPolite/common"
-	"sync"
 	"time"
 )
 
@@ -18,7 +17,6 @@ type DBConn struct {
 	Database      *mongo.Database
 	Collection    *mongo.Collection
 	ReadBatchChan chan DBRequest
-	Mutex         sync.Mutex
 }
 
 func (db *DBConn) GetCtx() context.Context          { return db.Ctx }
