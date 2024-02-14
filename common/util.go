@@ -63,6 +63,9 @@ func ReadTaskStrsFromInput(filename string) ([]string, error) {
 			fmt.Println("Error extracting domain from TaskStrs", err)
 			continue
 		}
+		if parsedURL.Scheme != "http" && parsedURL.Scheme != "https" {
+			continue
+		}
 		if _, ok := excludedHostnames[parsedURL.Hostname()]; ok {
 			continue
 		}
@@ -86,9 +89,9 @@ func ReadTaskStrsFromInput(filename string) ([]string, error) {
 //	No hostnames are handled by multiple workers, this ensures maximum politeness
 //	All workers can handle >= 1 hostnames, but at most N tasks
 //	This function only return [][][]string, caller (main) is responsible for creating workers
-func GroupTasks(taskStrs []string) [][][]string {
+func GroupTasks(taskStrs []string) []map[string][]string {
 	//	1. Maintain a hostname map (hostname -> list of taskStrs)
-	domainMap := make(map[string]map[string][]string, 0)
+	hostnameMap := make(map[string]map[string][]string, 0)
 	for _, taskStr := range taskStrs {
 		line := strings.TrimSpace(taskStr)
 		strL := strings.Split(line, ",")
@@ -98,23 +101,23 @@ func GroupTasks(taskStrs []string) [][][]string {
 			source = strings.TrimSpace(strL[1])
 		}
 		parsedURL, _ := url.Parse(URL) // no err should occur here (filtered by prev func)
-		if _, ok := domainMap[parsedURL.Hostname()]; !ok {
-			domainMap[parsedURL.Hostname()] = make(map[string][]string, 0)
+		if _, ok := hostnameMap[parsedURL.Hostname()]; !ok {
+			hostnameMap[parsedURL.Hostname()] = make(map[string][]string, 0)
 		}
-		if _, ok := domainMap[parsedURL.Hostname()][URL]; !ok {
-			domainMap[parsedURL.Hostname()][URL] = make([]string, 0)
+		if _, ok := hostnameMap[parsedURL.Hostname()][URL]; !ok {
+			hostnameMap[parsedURL.Hostname()][URL] = make([]string, 0)
 		}
-		domainMap[parsedURL.Hostname()][URL] = append(domainMap[parsedURL.Hostname()][URL], source)
+		hostnameMap[parsedURL.Hostname()][URL] = append(hostnameMap[parsedURL.Hostname()][URL], source)
 	}
 	//	2. Group hostnames together, all workers can handle >= 1 hostnames, but at most N tasks
-	var subGroups [][][]string
-	var tempGroups [][]string
+	var subGroups []map[string][]string
+	var tempGroups map[string][]string
 	var groupLen int
-	for _, taskStrM := range domainMap {
+	for hostname, taskStrM := range hostnameMap {
 		listLen := len(taskStrM)
 		if groupLen+listLen > GlobalConfig.WorkerStress {
 			subGroups = append(subGroups, tempGroups)
-			tempGroups = [][]string{}
+			tempGroups = make(map[string][]string, 0)
 			groupLen = 0
 		}
 		taskStrL := make([]string, len(taskStrM))
@@ -123,7 +126,7 @@ func GroupTasks(taskStrs []string) [][][]string {
 			taskStrL[idx] = k + "," + strings.Join(v, " ")
 			idx++
 		} // convert from map to string, use map for prev dedup
-		tempGroups = append(tempGroups, taskStrL)
+		tempGroups[hostname] = taskStrL
 		groupLen += listLen
 	}
 	if len(tempGroups) > 0 {

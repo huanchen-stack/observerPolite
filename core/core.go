@@ -102,26 +102,34 @@ func CORE() {
 	workerTaskStrList := cm.GroupTasks(taskStrs)
 
 	// Make workers
-	var workerList []wk.GeneralWorker
+	var workerList []wk.Worker
 	allResults := make(chan cm.TaskPrint, 500000) // all workers write to this
 	for i, _ := range workerTaskStrList {         // see generalworker.go for details
 		workerTasksHeap := &cm.HeapSlice{}
 		heap.Init(workerTasksHeap)
-		worker := wk.GeneralWorker{
+		worker := wk.Worker{
 			WorkerTasksHeap: *workerTasksHeap,
 			AllResultsRef:   &allResults,
 			RBConn:          &rbConn,
 			SPConn:          &spConn,
 		}
-		for j, _ := range workerTaskStrList[i] {
-			politeness := time.Duration(cm.GlobalConfig.ExpectedRuntime.Seconds() / float64(len(workerTaskStrList[i][j])))
+		for hostname, _ := range workerTaskStrList[i] {
+			numUnits := len(workerTaskStrList[i][hostname])
+			numUnits += 1 // +1 for possible sitemap retrieval
+			numUnits += cm.GlobalConfig.SentinelPoliteness
+			politeness := time.Duration(cm.GlobalConfig.ExpectedRuntime.Seconds() / float64(numUnits))
+			// logic:
+			//	if host healthy, then need to find sitemap, work is still distributed evenly
+			//  if host healthy, then look for robots, mostly DB lookup, but still need at least one host check
+			//	if host not healthy, then might have no work at all
 			hp := cm.TaskStrsByHostname{
+				Hostname:   hostname,
 				Schedule:   time.Duration(rand.Float64()*float64(politeness)) * time.Second,
 				Politeness: politeness * time.Second,
-				TaskStrs:   make(chan string, len(workerTaskStrList[i][j])),
+				TaskStrs:   make(chan string, len(workerTaskStrList[i][hostname])),
 			}
-			for k, _ := range workerTaskStrList[i][j] {
-				hp.TaskStrs <- workerTaskStrList[i][j][k]
+			for k, _ := range workerTaskStrList[i][hostname] {
+				hp.TaskStrs <- workerTaskStrList[i][hostname][k]
 				wg.Add(1)
 			}
 			close(hp.TaskStrs)

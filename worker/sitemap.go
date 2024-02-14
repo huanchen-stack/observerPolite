@@ -4,21 +4,19 @@ import (
 	"io"
 	"net/http"
 	cm "observerPolite/common"
-
-	"github.com/yterajima/go-sitemap"
 )
 
-func (gw *GeneralWorker) SitemapFetch(URL string) {
-	sitemap.SetFetch(myFetch)
-
-	//fmt.Println("--- fetching site map for url", URL)
-	smap, err := sitemap.Get(URL+"/sitemap.xml", nil)
-	if err != nil {
-		return
-	}
-	gw.SPConn.WriteChan <- smap
-	//fmt.Println("adding sitemap.xml of", URL, "to db")
-}
+//func (gw *GeneralWorker) SitemapFetch(URL string) {
+//	sitemap.SetFetch(myFetch)
+//
+//	//fmt.Println("--- fetching site map for url", URL)
+//	smap, err := sitemap.Get(URL+"/sitemap.xml", nil)
+//	if err != nil {
+//		return
+//	}
+//	gw.SPConn.WriteChan <- smap
+//	//fmt.Println("adding sitemap.xml of", URL, "to db")
+//}
 
 func myFetch(URL string, options interface{}) ([]byte, error) {
 	req, err := http.NewRequest("GET", URL, nil)

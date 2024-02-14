@@ -12,7 +12,7 @@ type Config struct {
 	WorkerStress       int
 	RobotsBuffSize     int
 	Retries            int
-	HostCheckSlowdown  int
+	SentinelPoliteness int
 	UserAgent          string
 	DBlogging          bool
 	DBURI              string
@@ -31,11 +31,35 @@ type Config struct {
 	HeartbeatDuration  time.Duration
 } // all hyperparameters users are allowed to config
 
+type Redirect struct {
+	Statuscode int
+	Location   string
+	LocationIP string
+}
+
+type DNSRecord struct {
+	Hostname string
+	IP       string
+	IPs      []string
+	CNAMEs   []string
+	MXs      []string
+	NSs      []string
+	TXTs     []string
+	PTRs     []string
+}
+
+type Sentinel struct {
+	Handled      bool
+	HealthErrMsg string
+	DNSRecords   []DNSRecord
+}
+
 type TaskStrsByHostname struct {
-	Schedule       time.Duration
-	Politeness     time.Duration
-	SitemapFetched bool
-	TaskStrs       chan string // taskStr: f"{url}, {source(wiki article)}"
+	Hostname   string
+	Schedule   time.Duration
+	Politeness time.Duration
+	Sentinel   Sentinel
+	TaskStrs   chan string // taskStr: f"{url}, {source(wiki article)}"
 } // this is assigned to workers; each hostname has a struct like this
 
 type RespPrint struct {
@@ -55,7 +79,7 @@ type DstChangePrint struct {
 
 type RetryHTTPPrint struct {
 	Retried       bool
-	RedirectChain []string
+	RedirectChain []Redirect
 	DstChange     DstChangePrint
 	Resp          RespPrint
 	Err           string
@@ -66,7 +90,8 @@ type TaskPrint struct {
 	Hostname      string
 	URL           string
 	IP            string
-	RedirectChain []string
+	DNSRecords    []DNSRecord
+	RedirectChain []Redirect
 	DstChange     DstChangePrint
 	Resp          RespPrint
 	Err           string

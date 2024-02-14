@@ -149,7 +149,7 @@ func TransportLayerOT(parsedURL *url.URL, taskIP *string, timeoutMult int) (*htt
 	// DNS Lookup
 	if *taskIP == "" {
 		IP, err := DNSLookUp(parsedURL.Hostname())
-		//fmt.Println(parsedURL.Hostname(), IP)
+		//fmt.Println(parsedURL.Hostname(), LocationIP)
 		if err != nil {
 			return nil, err
 		}
@@ -401,13 +401,13 @@ func (gw *GeneralWorker) FetchTask() (cm.TaskPrint, time.Duration) {
 
 	//if !taskStrsByHostname.SitemapFetched {
 	//	start := time.Now()
-	//	randSkip := rand.Intn(cm.GlobalConfig.HostCheckSlowdown)
+	//	randSkip := rand.Intn(cm.GlobalConfig.SentinelPoliteness)
 	//	time.Sleep(time.Duration(randSkip) * taskStrsByHostname.Politeness)
 	//
 	//	gw.HandleSitemapFetch(parsedURL.Hostname())
 	//
-	//	time.Sleep(time.Duration(cm.GlobalConfig.HostCheckSlowdown)*taskStrsByHostname.Politeness - time.Since(start))
-	//	taskStrsByHostname.Schedule += time.Duration(cm.GlobalConfig.HostCheckSlowdown) * taskStrsByHostname.Politeness
+	//	time.Sleep(time.Duration(cm.GlobalConfig.SentinelPoliteness)*taskStrsByHostname.Politeness - time.Since(start))
+	//	taskStrsByHostname.Schedule += time.Duration(cm.GlobalConfig.SentinelPoliteness) * taskStrsByHostname.Politeness
 	//	taskStrsByHostname.SitemapFetched = true
 	//}
 
