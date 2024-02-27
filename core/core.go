@@ -122,17 +122,21 @@ func CORE() {
 			//	if host healthy, then need to find sitemap, work is still distributed evenly
 			//  if host healthy, then look for robots, mostly DB lookup, but still need at least one host check
 			//	if host not healthy, then might have no work at all
+			hpTaskStrs := make(chan string, len(workerTaskStrList[i][hostname]))
+			hpSentinel := cm.Sentinel{}
 			hp := cm.TaskStrsByHostname{
 				Hostname:   hostname,
 				Schedule:   time.Duration(rand.Float64()*float64(politeness)) * time.Second,
 				Politeness: politeness * time.Second,
-				TaskStrs:   make(chan string, len(workerTaskStrList[i][hostname])),
+				Sentinel:   &hpSentinel,
+				TaskStrs:   &hpTaskStrs,
 			}
+
 			for k, _ := range workerTaskStrList[i][hostname] {
-				hp.TaskStrs <- workerTaskStrList[i][hostname][k]
+				*hp.TaskStrs <- workerTaskStrList[i][hostname][k]
 				wg.Add(1)
 			}
-			close(hp.TaskStrs)
+			close(*hp.TaskStrs)
 			heap.Push(&worker.WorkerTasksHeap, hp)
 		}
 		workerList = append(workerList, worker)

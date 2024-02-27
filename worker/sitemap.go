@@ -4,6 +4,7 @@ import (
 	"io"
 	"net/http"
 	cm "observerPolite/common"
+	"sync"
 )
 
 //func (gw *GeneralWorker) SitemapFetch(URL string) {
@@ -17,6 +18,8 @@ import (
 //	gw.SPConn.WriteChan <- smap
 //	//fmt.Println("adding sitemap.xml of", URL, "to db")
 //}
+
+var fetchLock sync.Mutex
 
 func myFetch(URL string, options interface{}) ([]byte, error) {
 	req, err := http.NewRequest("GET", URL, nil)

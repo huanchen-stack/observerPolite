@@ -83,6 +83,10 @@ func (db *DBConn) BulkWrite(dbDocs []cm.TaskPrint) (int, error) {
 	var writes []mongo.WriteModel
 	doneWG := 0
 	for i, dbDoc := range dbDocs {
+		if dbDoc.URL == "" { // accommodate robots.txt filter
+			doneWG++
+			continue
+		}
 		if dbDoc.Retry.Retried {
 			writes = append(writes, mongo.NewUpdateOneModel().SetFilter(
 				bson.M{"url": dbDoc.URL},

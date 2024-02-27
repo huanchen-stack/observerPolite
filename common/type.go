@@ -49,6 +49,7 @@ type DNSRecord struct {
 }
 
 type Sentinel struct {
+	Handling     bool
 	Handled      bool
 	HealthErrMsg string
 	DNSRecords   []DNSRecord
@@ -58,8 +59,8 @@ type TaskStrsByHostname struct {
 	Hostname   string
 	Schedule   time.Duration
 	Politeness time.Duration
-	Sentinel   Sentinel
-	TaskStrs   chan string // taskStr: f"{url}, {source(wiki article)}"
+	Sentinel   *Sentinel
+	TaskStrs   *chan string // taskStr: f"{url}, {source(wiki article)}"
 } // this is assigned to workers; each hostname has a struct like this
 
 type RespPrint struct {

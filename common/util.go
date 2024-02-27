@@ -111,7 +111,7 @@ func GroupTasks(taskStrs []string) []map[string][]string {
 	}
 	//	2. Group hostnames together, all workers can handle >= 1 hostnames, but at most N tasks
 	var subGroups []map[string][]string
-	var tempGroups map[string][]string
+	tempGroups := make(map[string][]string, 0)
 	var groupLen int
 	for hostname, taskStrM := range hostnameMap {
 		listLen := len(taskStrM)

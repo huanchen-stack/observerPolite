@@ -46,7 +46,7 @@ func (rm *RetryManager) NeedsRetry(taskPrint cm.TaskPrint) bool {
 		//use prev retried result
 		prevStatusCode = prevResult.Retry.Resp.StatusCode
 		if len(prevResult.Retry.RedirectChain) > 0 {
-			prevDst = prevResult.Retry.RedirectChain[len(prevResult.Retry.RedirectChain)-1]
+			prevDst = prevResult.Retry.RedirectChain[len(prevResult.Retry.RedirectChain)-1].Location
 			prevDst = strings.Split(prevDst, "")[len(strings.Split(prevDst, ""))-1]
 		} else {
 			prevDst = ""
@@ -57,7 +57,7 @@ func (rm *RetryManager) NeedsRetry(taskPrint cm.TaskPrint) bool {
 	} else { // otherwise use the normal result
 		prevStatusCode = prevResult.Resp.StatusCode
 		if len(prevResult.RedirectChain) > 0 {
-			prevDst = prevResult.RedirectChain[len(prevResult.RedirectChain)-1]
+			prevDst = prevResult.RedirectChain[len(prevResult.RedirectChain)-1].Location
 			prevDst = strings.Split(prevDst, "")[len(strings.Split(prevDst, ""))-1]
 		} else {
 			prevDst = ""
@@ -73,7 +73,7 @@ func (rm *RetryManager) NeedsRetry(taskPrint cm.TaskPrint) bool {
 
 	var dst string
 	if len(taskPrint.RedirectChain) > 0 {
-		dst = taskPrint.RedirectChain[len(taskPrint.RedirectChain)-1]
+		dst = taskPrint.RedirectChain[len(taskPrint.RedirectChain)-1].Location
 		dst = strings.Split(dst, "")[len(strings.Split(dst, ""))-1]
 	} else {
 		dst = ""
@@ -125,7 +125,7 @@ func (rm *RetryManager) Start() {
 			allRetryResults := make(chan cm.TaskPrint, len(retryBuff))
 			politeness := time.Duration( // use float64 -> inf to get around div by 0 exception
 				float64(cm.GlobalConfig.RetryPoliteness) / float64(len(retryBuff)))
-			worker := wk.GeneralWorker{
+			worker := wk.Worker{
 				WorkerTasksStrs: make(chan string, len(retryBuff)),
 				AllResultsRef:   &allRetryResults,
 			}

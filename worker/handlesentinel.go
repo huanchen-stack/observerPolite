@@ -31,7 +31,9 @@ func (wk *Worker) HealthCheck(scheme string, hostname string, dnsRecords *[]cm.D
 }
 
 func (wk *Worker) FetchSitemap(scheme string, hostname string) {
+	fetchLock.Lock()
 	sitemap.SetFetch(myFetch)
+	fetchLock.Unlock()
 
 	smap, err := sitemap.Get((&url.URL{
 		Scheme: scheme,
@@ -49,7 +51,7 @@ func (wk *Worker) FetchRobots(scheme string, hostname string) *robotstxt.Group {
 	response, err := wk.HTTPGET(&url.URL{
 		Scheme: scheme,
 		Host:   hostname,
-		Path:   "/",
+		Path:   "/robots.txt",
 	}, nil, nil)
 	if err != nil || response.StatusCode != 200 {
 		return &robotstxt.Group{}
@@ -85,51 +87,84 @@ func (wk *Worker) FetchRobots(scheme string, hostname string) *robotstxt.Group {
 	return robotsGroup
 }
 
+func (wk *Worker) PseudoHandleSentinel(taskStrsByHostname *cm.TaskStrsByHostname) {
+	closedTaskStrs := *taskStrsByHostname.TaskStrs
+	newTaskStrs := make(chan string, len(closedTaskStrs)+1)
+	i := 0
+	for str := range closedTaskStrs {
+		fmt.Println(taskStrsByHostname.Hostname, "-[", i, "]-", str)
+		newTaskStrs <- str
+		i++
+	}
+	newTaskStrs <- "sitemap"
+	close(newTaskStrs)
+
+	*taskStrsByHostname.TaskStrs = newTaskStrs
+}
+
 // HandleSentinel consists of the following
 //  1. a host health check, including DNS record lookup and log
 //  2. a robots check, may or may not need to access DB, send request
 //     2.* upon a success in finding robots.txt, need to filter the entire channel
 //  3. a sitemap fetch
 //  4. upon new robots.txt or sitemap.xml(txt), need to write to DB
-func (wk *Worker) HandleSentinel(taskStrsByHostname *cm.TaskStrsByHostname) {
-	// Get parsedURL
-	taskStr := <-(*taskStrsByHostname).TaskStrs
-	(*taskStrsByHostname).TaskStrs <- taskStr
+//
+// Return # WG decrement!
+func (wk *Worker) HandleSentinel(taskStrsByHostname *cm.TaskStrsByHostname) int {
+	closedTaskStrs := *taskStrsByHostname.TaskStrs
+	newTaskStrs := make(chan string, len(closedTaskStrs)+1)
 
-	line := strings.TrimSpace(taskStr)
-	strL := strings.Split(line, ",")
-	URL := strings.TrimSpace(strL[0])
-	parsedURL, _ := url.Parse(URL)
+	defer func() {
+		//	fmt.Println(taskStrsByHostname.Hostname, "-[", i, "]-", str)
+		close(newTaskStrs)
+		*taskStrsByHostname.TaskStrs = newTaskStrs
+		taskStrsByHostname.Sentinel.Handled = true
+		taskStrsByHostname.Sentinel.Handling = false
+	}()
 
-	// HealthCheck (step 1)
-	//   first assume scheme is https, handleTask needs to ignore this errmsg if scheme is http
-	var err error
-	wk.HealthCheck("https", parsedURL.Hostname(), &taskStrsByHostname.Sentinel.DNSRecords)
+	fmt.Println("doing health check for", taskStrsByHostname.Hostname)
+	err := wk.HealthCheck("https", taskStrsByHostname.Hostname, &taskStrsByHostname.Sentinel.DNSRecords)
 	if err != nil {
-		(*taskStrsByHostname).Sentinel.HealthErrMsg = err.Error()
-		return
+		taskStrsByHostname.Sentinel.HealthErrMsg = err.Error()
+		for taskStr := range closedTaskStrs {
+			newTaskStrs <- taskStr
+		}
+		fmt.Println("health check err for", taskStrsByHostname.Hostname, "| due to", taskStrsByHostname.Sentinel.HealthErrMsg)
+		return 0
 	}
 
-	// rand shuffle the fetchSitemap task into the deck, fetchTask is responsible to tell this
-	randomFactor := rand.Intn(len(taskStrsByHostname.TaskStrs))
-	(*taskStrsByHostname).TaskStrs <- "sitemap"
-	for i := 0; i < randomFactor; i++ {
-		shuffledStr := <-(*taskStrsByHostname).TaskStrs
-		(*taskStrsByHostname).TaskStrs <- shuffledStr
-	}
-	wk.FetchSitemap("https", parsedURL.Hostname())
+	// randomly insert sitemap fetch as a task
+	randomFactor := rand.Intn(len(closedTaskStrs) + 1)
 
-	// Fetch robots (DB read + may or may not request); filter the channel (step 2, 2.*, 4)
+	// fetch robots from DB/host prior to filtering
+	if taskStrsByHostname.Hostname == "www.microsoft.com" {
+		fmt.Println()
+	}
 	var group **robotstxt.Group
-	groupHTTP := wk.RBConn.Get("http", parsedURL.Hostname())
-	groupHTTPS := wk.RBConn.Get("https", parsedURL.Hostname())
-	for i := 0; i < len((*taskStrsByHostname).TaskStrs); i++ {
-		taskStrInner := <-(*taskStrsByHostname).TaskStrs
-		(*taskStrsByHostname).TaskStrs <- taskStrInner
+	groupHTTP := wk.RBConn.Get("http", taskStrsByHostname.Hostname)
+	if groupHTTP == nil {
+		groupHTTP = wk.FetchRobots("http", taskStrsByHostname.Hostname)
+	}
+	groupHTTPS := wk.RBConn.Get("https", taskStrsByHostname.Hostname)
+	if groupHTTPS == nil {
+		groupHTTPS = wk.FetchRobots("https", taskStrsByHostname.Hostname)
+	}
+
+	// wait group decrement
+	wgDec := 0
+
+	i := 0
+	for taskStr := range closedTaskStrs {
+		if i == randomFactor {
+			newTaskStrs <- "sitemap"
+			fmt.Println(taskStrsByHostname.Hostname, "inserted sitemap task")
+		}
 		parsedURLInner, _ := url.Parse(
 			strings.TrimSpace(
 				strings.Split(
-					strings.TrimSpace(taskStrInner),
+					strings.TrimSpace(
+						taskStr,
+					),
 					",",
 				)[0],
 			),
@@ -139,13 +174,14 @@ func (wk *Worker) HandleSentinel(taskStrsByHostname *cm.TaskStrsByHostname) {
 		} else {
 			group = &groupHTTPS
 		}
-		if *group == nil {
-			*group = wk.FetchRobots(parsedURLInner.Scheme, parsedURLInner.Hostname())
-		}
 		if (*group).Test(parsedURLInner.Path) {
-			(*taskStrsByHostname).TaskStrs <- taskStr
+			newTaskStrs <- taskStr
+			fmt.Println(taskStrsByHostname.Hostname, "-[", i, "]-", taskStr)
 		} else {
+			wgDec++
 			fmt.Println("Robots excluded:", parsedURLInner.String())
 		}
+		i += 1
 	}
+	return wgDec
 }
